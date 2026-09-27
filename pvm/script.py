@@ -80,6 +80,8 @@ def sentences_hash(texts: list[str]) -> str:
 
 def display_text(s: str) -> str:
     protected = _KEEP.sub(lambda m: _PLACEHOLDERS[m.group()], s)
+    # A clause break inside one cue becomes a space, so merged clauses stay readable ("2022年 哈佛大学…").
+    protected = re.sub(f"[{re.escape(CLAUSE_BREAKS)}]+", " ", protected)
     out = "".join(ch for ch in protected if ch not in STRIP_CHARS)
     for ch, ph in _PLACEHOLDERS.items():
         out = out.replace(ph, ch)
@@ -130,14 +132,15 @@ def subtitle_chunks(sentence: str, max_chars: int = 14, boundaries: set[int] | N
     if not clauses:
         return []
 
-    # Very short clauses ("那么，") read better merged with the following one.
+    # Fragments ("那么，", "2022年，") never stand alone: they join the next clause, which is split again
+    # if it gets too long. Short but complete lead-ins ("他们发现，") join only when the result fits one cue.
     merged: list[tuple[int, int]] = []
     for a, b in clauses:
         if merged:
             pa, pb = merged[-1]
-            short_prev = _width(display_text(sentence[pa:pb])) <= 3
+            prev_width = _width(display_text(sentence[pa:pb]))
             fits = _width(display_text(sentence[pa:b])) <= max_chars
-            if short_prev and fits:
+            if prev_width <= 3.5 or (prev_width <= 4 and fits):
                 merged[-1] = (pa, b)
                 continue
         merged.append((a, b))

@@ -183,6 +183,15 @@ def decode_audio(path: Path, sample_rate: int = 44100):
     return np.frombuffer(proc.stdout, dtype="<i2").astype(np.float32) / 32768.0
 
 
+def decode_audio_bytes(data: bytes, sample_rate: int = 44100):
+    """Decode encoded audio (mp3, wav, …) held in memory to mono float32 samples via ffmpeg."""
+    import numpy as np
+
+    proc = run([ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+                "-ac", "1", "-ar", str(sample_rate), "-f", "s16le", "-"], input=data)
+    return np.frombuffer(proc.stdout, dtype="<i2").astype(np.float32) / 32768.0
+
+
 def write_wav(path: Path, samples, sample_rate: int = 44100) -> None:
     import numpy as np
 

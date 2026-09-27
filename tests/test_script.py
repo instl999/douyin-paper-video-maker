@@ -19,8 +19,13 @@ class DisplayTextTest(unittest.TestCase):
     def test_strips_punctuation_but_keeps_marks_inside_tokens(self):
         self.assertEqual(display_text("丹尼尔·卡尼曼的研究"), "丹尼尔·卡尼曼的研究")
         self.assertEqual(display_text("Kahneman's book, e.g. Thinking"), "Kahneman's book eg Thinking")
-        self.assertEqual(display_text("增长了3.5倍，共1,200人。"), "增长了3.5倍共1,200人")
+        self.assertEqual(display_text("增长了3.5倍，共1,200人。"), "增长了3.5倍 共1,200人")
         self.assertEqual(display_text("“好吗？”他说。"), "好吗他说")
+
+    def test_short_leading_clause_never_stands_alone(self):
+        for sentence in ("2022年，哈佛大学经济学家发表了研究。", "2022年，哈佛大学经济学家在自然杂志发表了一项研究。"):
+            chunks = [c[2] for c in subtitle_chunks(sentence)]
+            self.assertTrue(chunks[0].startswith("2022年 哈佛"), chunks)
 
 
 class SubtitleChunkTest(unittest.TestCase):
@@ -30,7 +35,7 @@ class SubtitleChunkTest(unittest.TestCase):
         if word_starts("测试") is None:
             self.skipTest("jieba not installed")
         chunks = [c[2] for c in subtitle_chunks(self.LONG)]
-        self.assertEqual("".join(chunks), display_text(self.LONG))
+        self.assertEqual("".join(chunks), display_text(self.LONG).replace(" ", ""))
         for word in ("处境", "所有"):
             self.assertTrue(any(word in c for c in chunks), (word, chunks))
 
