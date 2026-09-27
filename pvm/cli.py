@@ -164,6 +164,27 @@ def cmd_list(a) -> None:
         log(f"  {r['slug']:<28} {r['n']:>3} candidates  {r['topic']}")
 
 
+# ---------------------------------------------------------------- voice and timeline
+
+def cmd_voice(a) -> None:
+    from .pipeline import prepare
+    from .project import Project
+    from .util import fmt_seconds
+    from .voice import build_voice
+
+    p = Project.load(a.slug)
+    if not p.storyboard_path.exists():
+        build_voice(p, None, a.engine, force=a.force)
+        log("no storyboard yet, so no timeline; the voice timing is in audio/voice.json")
+        return
+    _, track, tl = prepare(p, engine=a.engine, force_voice=a.force)
+    log(f"timeline: {len(tl.scenes)} scenes, {len(tl.cues)} subtitle cues, {fmt_seconds(tl.duration)} "
+        f"-> audio/timeline.json, audio/subtitles.srt")
+    for sc in tl.scenes:
+        log(f"  {sc.id:<12} {sc.type:<12} {fmt_seconds(sc.start)} - {fmt_seconds(sc.end)}  ({sc.end - sc.start:.1f} s)")
+    log(f"  hook on screen {tl.hook[0]:.1f} - {tl.hook[1]:.1f} s")
+
+
 # ---------------------------------------------------------------- setup and quota
 
 def cmd_fonts(a) -> None:
@@ -232,6 +253,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--strict", action="store_true", help="final-render rules: unverifiable excerpts and rights issues are errors")
     s.add_argument("--reanchor", action="store_true", help="accept the current script after re-checking the sentence ranges")
     s.set_defaults(func=cmd_check)
+
+    s = sub.add_parser("voice", help="synthesize the narration and build the timeline and subtitles")
+    s.add_argument("slug")
+    s.add_argument("--engine", choices=["edge", "ark"], help="override PVM_TTS_ENGINE and the storyboard")
+    s.add_argument("--force", action="store_true", help="rebuild voice.wav even if nothing changed")
+    s.set_defaults(func=cmd_voice)
 
     s = sub.add_parser("list", help="list projects and research")
     s.set_defaults(func=cmd_list)

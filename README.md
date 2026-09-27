@@ -28,6 +28,7 @@ pvm sentences sunk-cost                      # numbered sentences for storyboard
 pvm source sunk-cost --find "sunk cost"      # the exact source text to quote as evidence
 # write projects\sunk-cost\storyboard.json (see AGENTS.md), then:
 pvm check sunk-cost
+pvm voice sunk-cost                          # narration, timeline and subtitles (edge-tts or Ark)
 ```
 
 ## Status
@@ -35,8 +36,8 @@ pvm check sunk-cost
 | Milestone | Scope | State |
 |---|---|---|
 | M1 Foundation | CLI; claims with verbatim-excerpt verification; storyboard anchor; open-access and license detection; font policy; subtitle fixes; quota pacing; tests | done |
-| M2 Voice and timeline | TTS per sentence with word timestamps, timeline, SRT | next |
-| M3 Renderer and animatic | Compositor, subtitles, AI label, FFmpeg encode with loudness normalization, QA | planned |
+| M2 Voice and timeline | TTS per sentence with word timestamps and a cache; voice track; timeline; SRT | done |
+| M3 Renderer and animatic | Compositor, subtitles, AI label, FFmpeg encode with loudness normalization, QA | next |
 | M4 Images | Seedream adapter, prompt compiler, cache, OCR gate | planned |
 | M5 Planner | DeepSeek storyboard drafts and claim review | planned |
 
