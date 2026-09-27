@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Generated data (video projects, research results, caches, downloaded fonts)
+projects/
+research/
+cache/
+assets/fonts/
