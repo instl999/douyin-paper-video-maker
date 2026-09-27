@@ -1,16 +1,22 @@
 """Script handling: sentence splitting (the storyboard's unit) and subtitle chunking."""
 from __future__ import annotations
 
+import logging
 import math
 import re
 from dataclasses import dataclass
+from functools import lru_cache
+
+from .util import stable_hash
 
 SENT_END = "。！？!?…"
 CLOSERS = "”’」』）)】》\"'"
 CLAUSE_BREAKS = "，,、；;：:—"
 # Never shown in subtitles (the benchmark videos show bare text).
 STRIP_CHARS = set("，,。.、；;：:！!？?…—“”‘’\"'「」『』（）()【】《》〈〉·~～")
-_DIGIT_PUNCT = re.compile(r"(?<=\d)[.,:](?=\d)")
+# ...except where the punctuation is part of a token: 3.5 / 1,200 / 12:30, 丹尼尔·卡尼曼, Kahneman's.
+_KEEP = re.compile(r"(?<=\d)[.,:](?=\d)|(?<=\w)·(?=\w)|(?<=[A-Za-z])['’](?=[A-Za-z])")
+_PLACEHOLDERS = {".": "\x01", ",": "\x02", ":": "\x03", "·": "\x04", "'": "\x05", "’": "\x06"}
 _ASCII_WORD = re.compile(r"[A-Za-z0-9]")
 
 
@@ -67,11 +73,35 @@ def split_sentences(text: str) -> list[Sentence]:
     return [Sentence(n=i + 1, text=t, para_end=end) for i, (t, end) in enumerate(raw)]
 
 
+def sentences_hash(texts: list[str]) -> str:
+    """Fingerprint of the sentence list; the storyboard stores it to detect script edits (spec §11)."""
+    return stable_hash(list(texts))[:16]
+
+
 def display_text(s: str) -> str:
-    protected = _DIGIT_PUNCT.sub(lambda m: {".": "\x01", ",": "\x02", ":": "\x03"}[m.group()], s)
+    protected = _KEEP.sub(lambda m: _PLACEHOLDERS[m.group()], s)
     out = "".join(ch for ch in protected if ch not in STRIP_CHARS)
-    out = out.replace("\x01", ".").replace("\x02", ",").replace("\x03", ":")
+    for ch, ph in _PLACEHOLDERS.items():
+        out = out.replace(ph, ch)
     return re.sub(r"\s{2,}", " ", out).strip()
+
+
+@lru_cache(maxsize=1)
+def _jieba():
+    try:
+        import jieba
+    except ImportError:
+        return None
+    jieba.setLogLevel(logging.WARNING)
+    return jieba
+
+
+def word_starts(text: str) -> set[int] | None:
+    """Character offsets where words start (jieba segmentation), or None when jieba is not installed."""
+    jb = _jieba()
+    if jb is None:
+        return None
+    return {start for _, start, _ in jb.tokenize(text)}
 
 
 def _width(s: str) -> float:
@@ -83,8 +113,11 @@ def subtitle_chunks(sentence: str, max_chars: int = 14, boundaries: set[int] | N
     """Split a sentence into subtitle chunks.
 
     Returns (start, end, display) with char offsets into `sentence`. `boundaries` holds char offsets
-    where TTS word tokens start; long clauses are cut there so Chinese words stay intact.
+    where words start; long clauses are cut there so Chinese words stay intact. Without boundaries,
+    jieba segmentation is used when installed.
     """
+    if boundaries is None:
+        boundaries = word_starts(sentence)
     clauses: list[tuple[int, int]] = []
     start = 0
     for i, ch in enumerate(sentence):

@@ -1,20 +1,44 @@
 """Project folders: projects/<slug>/ holds everything for one video."""
 from __future__ import annotations
 
+import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from .evidence import EvidenceResult, SourceText, check_evidence, load_source_text
 from .schema import Paper, Storyboard, check_storyboard, parse_storyboard
-from .script import Sentence, clean_script, split_sentences
-from .util import ROOT, PvmError, ensure_dir, now_iso, read_json, read_text, stable_hash, write_json, write_text
+from .script import Sentence, clean_script, sentences_hash, split_sentences
+from .util import PvmError, data_dir, ensure_dir, now_iso, read_json, read_text, stable_hash, write_json, write_text
 
-PROJECTS_DIR = ROOT / "projects"
-CACHE_DIR = ROOT / "cache"
+# project.json is read-modify-written by several stages; image generation runs them on threads.
+_META_LOCK = threading.RLock()
+
+
+def projects_dir() -> Path:
+    return data_dir("projects")
+
+
+def cache_dir() -> Path:
+    return data_dir("cache")
+
+
+@dataclass
+class CheckReport:
+    storyboard: Storyboard
+    errors: list[str]
+    warnings: list[str]
+    evidence: list[EvidenceResult] = field(default_factory=list)
+    sentences_hash: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
 
 
 class Project:
     def __init__(self, slug: str):
         self.slug = slug
-        self.dir = PROJECTS_DIR / slug
+        self.dir = projects_dir() / slug
 
     # ------------------------------------------------------------ lifecycle
     @classmethod
@@ -72,18 +96,39 @@ class Project:
         return read_json(self.meta_path, {}) or {}
 
     def update_meta(self, **fields) -> dict:
+        with _META_LOCK:
+            meta = self.meta()
+            meta.update(fields)
+            meta["updated"] = now_iso()
+            write_json(self.meta_path, meta)
+            return meta
+
+    # ------------------------------------------------------------ sources
+    def sources(self) -> dict[str, Paper]:
         meta = self.meta()
-        meta.update(fields)
-        meta["updated"] = now_iso()
-        write_json(self.meta_path, meta)
-        return meta
+        raw = meta.get("sources")
+        if raw is None and meta.get("paper"):  # projects created before multi-source support
+            raw = {"src1": meta["paper"]}
+        return {sid: Paper.model_validate(data) for sid, data in (raw or {}).items()}
 
-    def paper(self) -> Paper | None:
-        data = self.meta().get("paper")
-        return Paper.model_validate(data) if data else None
+    def paper(self, source_id: str = "src1") -> Paper | None:
+        return self.sources().get(source_id)
 
-    def set_paper(self, paper: Paper) -> None:
-        self.update_meta(paper=paper.model_dump(exclude_none=True))
+    def set_paper(self, paper: Paper, source_id: str = "src1") -> None:
+        with _META_LOCK:
+            meta = self.meta()
+            sources = meta.get("sources") or ({"src1": meta["paper"]} if meta.get("paper") else {})
+            sources[source_id] = paper.model_dump(exclude_none=True)
+            meta["sources"] = sources
+            meta.pop("paper", None)
+            meta["updated"] = now_iso()
+            write_json(self.meta_path, meta)
+
+    def source_pdf(self, source_id: str = "src1") -> Path:
+        return self.sources_dir / f"{source_id}.pdf"
+
+    def source_texts(self) -> dict[str, SourceText]:
+        return {sid: load_source_text(sid, paper, self.sources_dir) for sid, paper in self.sources().items()}
 
     # ------------------------------------------------------------ script
     def set_script(self, text: str) -> list[Sentence]:
@@ -105,33 +150,52 @@ class Project:
         cached = read_json(self.sentences_path)
         sentences = split_sentences(text)
         if cached != [s.__dict__ for s in sentences]:
-            # script.txt was edited by hand: keep sentences.json in sync.
+            # script.txt was edited by hand. The storyboard's sentences_hash catches any shift in numbering.
             write_json(self.sentences_path, [s.__dict__ for s in sentences])
         return sentences
 
     # ------------------------------------------------------------ storyboard
-    def storyboard(self, check: bool = True) -> Storyboard:
+    def storyboard_data(self) -> dict:
         data = read_json(self.storyboard_path)
         if data is None:
-            raise PvmError(f"no storyboard yet: write {self.storyboard_path.relative_to(ROOT)} "
-                           f"(see AGENTS.md) or run  pvm plan {self.slug} --auto")
-        sb = parse_storyboard(data)
-        if check:
-            errors, _ = check_storyboard(sb, len(self.sentences()))
-            if errors:
-                raise PvmError("storyboard.json has problems:\n" + "\n".join(f"  - {e}" for e in errors)
-                               + f"\nRun  pvm check {self.slug}  for details.")
-        return sb
+            raise PvmError(f"no storyboard yet: write {self.storyboard_path} (format: AGENTS.md), "
+                           f"then run  pvm check {self.slug}")
+        return data
+
+    def check(self, *, strict: bool = False, ignore_anchor: bool = False) -> CheckReport:
+        """All storyboard checks: schema, ranges, claims, anchor, excerpts, page rights."""
+        sb = parse_storyboard(self.storyboard_data())
+        texts = [s.text for s in self.sentences()]
+        papers = self.sources()
+        errors, warnings = check_storyboard(sb, texts, set(papers), ignore_anchor=ignore_anchor)
+        ev_errors, ev_warnings, results = check_evidence(sb, self.source_texts(), papers, strict=strict)
+        return CheckReport(sb, errors + ev_errors, warnings + ev_warnings, results, sentences_hash(texts))
+
+    def storyboard(self, check: bool = True, strict: bool = False) -> Storyboard:
+        if not check:
+            return parse_storyboard(self.storyboard_data())
+        report = self.check(strict=strict)
+        if report.errors:
+            raise PvmError("storyboard.json has problems:\n" + "\n".join(f"  - {e}" for e in report.errors)
+                           + f"\nRun  pvm check {self.slug}  for details.")
+        return report.storyboard
+
+    def anchor_storyboard(self, digest: str) -> None:
+        """Record which sentence list the storyboard's numbers refer to (spec §11)."""
+        data = self.storyboard_data()
+        data["sentences_hash"] = digest
+        write_json(self.storyboard_path, data)
 
     # ------------------------------------------------------------ stage stamps
     def stamp(self, stage: str) -> dict | None:
         return (self.meta().get("stages") or {}).get(stage)
 
     def set_stamp(self, stage: str, inputs: dict, **extra) -> None:
-        meta = self.meta()
-        stages = meta.setdefault("stages", {})
-        stages[stage] = {"hash": stable_hash(inputs), "at": now_iso(), **extra}
-        write_json(self.meta_path, meta)
+        with _META_LOCK:
+            meta = self.meta()
+            stages = meta.setdefault("stages", {})
+            stages[stage] = {"hash": stable_hash(inputs), "at": now_iso(), **extra}
+            write_json(self.meta_path, meta)
 
     def is_fresh(self, stage: str, inputs: dict) -> bool:
         s = self.stamp(stage)
@@ -139,6 +203,7 @@ class Project:
 
 
 def list_projects() -> list[str]:
-    if not PROJECTS_DIR.exists():
+    root = projects_dir()
+    if not root.exists():
         return []
-    return sorted(d.name for d in PROJECTS_DIR.iterdir() if (d / "project.json").exists())
+    return sorted(d.name for d in root.iterdir() if (d / "project.json").exists())

@@ -1,0 +1,258 @@
+"""pvm command line. Spec: docs/spec.md. Storyboard format for authors and agents: AGENTS.md."""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+from . import __version__
+from .util import PvmError, log, read_text, setup_console, warn
+
+POLICY_TEXT = {
+    "page": "the full page (openly licensed published version)",
+    "title_crop": "the title region of page 1 (not openly licensed)",
+    "card": "a citation card (no PDF yet)",
+}
+
+
+# ---------------------------------------------------------------- research and sources
+
+def cmd_research(a) -> None:
+    from .research import run_research
+
+    sources = tuple(s.strip() for s in a.sources.split(",") if s.strip())
+    out_dir, cands = run_research(a.topic, a.query or [], slug=a.slug, limit=a.limit, per_query=a.per_query,
+                                  since=a.since, sources=sources, oa_only=a.oa_only)
+    log(f"\n{len(cands)} candidates -> {out_dir / 'candidates.md'}")
+    for c in cands[:12]:
+        p = c.paper
+        log(f"  {c.id}  {p.year or '----'}  {(p.venue or '')[:26]:<26}  {' '.join(c.badges)[:34]:<34}  {p.title[:70]}")
+    if cands:
+        log(f"\nAttach one:  pvm paper <project> --pick {out_dir.name}:{cands[0].id}")
+
+
+def cmd_paper(a) -> None:
+    from .evidence import describe_license, display_policy
+    from .project import Project
+    from .research import download_pdf, lookup_doi, pick_candidate
+
+    if bool(a.doi) == bool(a.pick):
+        raise PvmError("give exactly one of --doi or --pick")
+    paper = lookup_doi(a.doi) if a.doi else pick_candidate(a.pick)
+    p, _ = Project.open_or_create(a.slug)
+    p.set_paper(paper, a.id)
+    pdf = p.source_pdf(a.id)
+    log(f"[{a.id}] {paper.citation()}")
+    if not pdf.exists() and not a.no_download:
+        url = download_pdf(paper, pdf)
+        if url:
+            log(f"  downloaded the open-access PDF from {url}")
+    log(f"  open access: {paper.oa_status or ('yes' if paper.is_oa else 'no or unknown')}; "
+        f"license: {describe_license(paper)}")
+    log(f"  the opening will show {POLICY_TEXT[display_policy(paper, pdf.exists())]}")
+    if not pdf.exists():
+        log(f"  no PDF yet: save it as {pdf} so excerpts can be checked against the full text")
+
+
+def _find_in(raw: str, query: str, width: int = 90) -> list[str]:
+    flat = re.sub(r"\s+", " ", raw)
+    out = []
+    for m in re.finditer(re.escape(query), flat, re.I):
+        a, b = max(0, m.start() - width), min(len(flat), m.end() + width)
+        out.append(flat[a:b])
+    return out
+
+
+def cmd_source(a) -> None:
+    from .evidence import describe_license, display_policy, load_source_text
+    from .project import Project
+
+    p = Project.load(a.slug)
+    papers = p.sources()
+    if not papers:
+        raise PvmError(f"no sources yet: run  pvm paper {a.slug} --doi <doi>")
+    for sid in [a.id] if a.id else list(papers):
+        if sid not in papers:
+            raise PvmError(f"unknown source '{sid}'; this project has: {', '.join(papers)}")
+        paper = papers[sid]
+        text = load_source_text(sid, paper, p.sources_dir)
+        log(f"[{sid}] {paper.citation()}")
+        log(f"  license: {describe_license(paper)}; the opening shows "
+            f"{POLICY_TEXT[display_policy(paper, text.has_pdf)]}")
+        parts = ", ".join(f"{k} ({len(v):,} chars)" for k, v in text.parts.items())
+        log(f"  text for excerpts: {parts}")
+        if not text.has_full_text:
+            log(f"  title and abstract only: save the PDF as {p.source_pdf(sid)} to quote from the body")
+        if a.find:
+            hits = [(name, line) for name, raw in text.parts.items() for line in _find_in(raw, a.find)]
+            for name, line in hits:
+                log(f"  [{name}] …{line}…")
+            if not hits:
+                log(f"  '{a.find}' does not occur in {sid}")
+        elif a.full:
+            for name, raw in text.parts.items():
+                log(f"\n--- {name} ---\n{raw}")
+        elif paper.abstract:
+            log(f"\n  Abstract: {paper.abstract}\n")
+
+
+# ---------------------------------------------------------------- project and storyboard
+
+def cmd_script(a) -> None:
+    from .project import Project
+
+    text = read_text(Path(a.file)) if a.file else a.text
+    if not text:
+        raise PvmError("give --file <script.txt> or --text '<script>'")
+    p, created = Project.open_or_create(a.slug)
+    had_storyboard = p.storyboard_path.exists()
+    sentences = p.set_script(text)
+    log(f"{'created' if created else 'updated'} project {a.slug}: {len(sentences)} sentences "
+        f"({sum(s.para_end for s in sentences)} paragraphs)")
+    if had_storyboard:
+        warn(f"a storyboard already exists; run  pvm check {a.slug}  to see whether its sentence ranges still fit")
+    log(f"next:  pvm sentences {a.slug}  (numbered sentences for storyboard.json)")
+
+
+def cmd_sentences(a) -> None:
+    from .project import Project
+
+    for s in Project.load(a.slug).sentences():
+        log(f"{s.n:>3}  {s.text}{'  ¶' if s.para_end else ''}")
+
+
+def cmd_check(a) -> None:
+    from .project import Project
+
+    p = Project.load(a.slug)
+    report = p.check(strict=a.strict, ignore_anchor=a.reanchor)
+    sb = report.storyboard
+    for w in report.warnings:
+        log(f"  warning: {w}")
+    for e in report.errors:
+        log(f"  ERROR:   {e}")
+    per_type: dict[str, int] = {}
+    for c in sb.claims:
+        per_type[c.type] = per_type.get(c.type, 0) + c.sentences[1] - c.sentences[0] + 1
+    found = sum(r.status == "found" for r in report.evidence)
+    log(f"scenes: {len(sb.scenes)}; sentences by claim type: "
+        + (", ".join(f"{k} {v}" for k, v in sorted(per_type.items())) or "none")
+        + f"; excerpts found: {found}/{len(report.evidence)}")
+    if report.errors:
+        raise PvmError(f"{len(report.errors)} problem(s) in {p.storyboard_path}")
+    if sb.sentences_hash != report.sentences_hash:
+        p.anchor_storyboard(report.sentences_hash)
+        log(f"anchored the storyboard to the current script (sentences_hash {report.sentences_hash})")
+    log("ok" + (f", {len(report.warnings)} warning(s)" if report.warnings else ""))
+
+
+def cmd_list(a) -> None:
+    from .project import Project, list_projects
+    from .research import list_research
+
+    projects = list_projects()
+    log("projects:" if projects else "projects: (none)")
+    for slug in projects:
+        p = Project(slug)
+        papers = p.sources()
+        state = "storyboard" if p.storyboard_path.exists() else ("script" if p.script_path.exists() else "new")
+        log(f"  {slug:<28} {state:<11} sources: {', '.join(papers) or '-'}")
+    research = list_research()
+    log("research:" if research else "research: (none)")
+    for r in research:
+        log(f"  {r['slug']:<28} {r['n']:>3} candidates  {r['topic']}")
+
+
+# ---------------------------------------------------------------- setup and quota
+
+def cmd_fonts(a) -> None:
+    from .fonts import download_fonts
+
+    if not download_fonts(force=a.force):
+        raise PvmError("some fonts could not be downloaded; see the warnings above")
+    log("fonts ready (SIL Open Font License)")
+
+
+def cmd_quota(a) -> None:
+    from .quota import status
+
+    st = status()
+    log(f"plan tier {st.tier}: monthly budget {st.monthly_budget:,} AFP, daily cap {st.daily_cap:,} AFP")
+    log(f"used this month {st.used_cycle:,} AFP ({100 * (1 - st.remaining_fraction):.0f}%), today {st.used_today:,}; "
+        f"{st.days_left} day(s) left in the cycle")
+    log(f"allowance today: {st.allowance_today:,} AFP; mode: {st.mode}")
+
+
+# ---------------------------------------------------------------- parser
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="pvm", description="Evidence-led paper explainer videos (spec: docs/spec.md)")
+    parser.add_argument("--version", action="version", version=f"pvm {__version__}")
+    sub = parser.add_subparsers(dest="command", required=True, metavar="<command>")
+
+    s = sub.add_parser("research", help="search scholarly indexes and rank candidate papers")
+    s.add_argument("topic")
+    s.add_argument("-q", "--query", action="append", help="English search query (repeatable; default: the topic)")
+    s.add_argument("--slug", help="folder name under research/ (default: from the topic)")
+    s.add_argument("--limit", type=int, default=15)
+    s.add_argument("--per-query", type=int, default=25)
+    s.add_argument("--since", type=int, help="earliest publication year")
+    s.add_argument("--sources", default="openalex,crossref", help="comma list: openalex,crossref,europepmc,arxiv,s2")
+    s.add_argument("--oa-only", action="store_true", help="only open-access papers")
+    s.set_defaults(func=cmd_research)
+
+    s = sub.add_parser("paper", help="attach a source paper to a project")
+    s.add_argument("slug")
+    s.add_argument("--doi")
+    s.add_argument("--pick", help="<research-slug>:<candidate-id>, e.g. sunk-cost:c03")
+    s.add_argument("--id", default="src1", help="source id (default src1, the paper shown in the opening)")
+    s.add_argument("--no-download", action="store_true", help="do not fetch the open-access PDF")
+    s.set_defaults(func=cmd_paper)
+
+    s = sub.add_parser("source", help="show a source's license, display policy and quotable text")
+    s.add_argument("slug")
+    s.add_argument("--id", help="only this source")
+    s.add_argument("--find", help="show where this text occurs (to copy verbatim excerpts)")
+    s.add_argument("--full", action="store_true", help="print the full text")
+    s.set_defaults(func=cmd_source)
+
+    s = sub.add_parser("script", help="create or update a project's narration script")
+    s.add_argument("slug")
+    s.add_argument("--file", help="UTF-8 text file, one paragraph per line")
+    s.add_argument("--text")
+    s.set_defaults(func=cmd_script)
+
+    s = sub.add_parser("sentences", help="print the numbered sentences")
+    s.add_argument("slug")
+    s.set_defaults(func=cmd_sentences)
+
+    s = sub.add_parser("check", help="validate storyboard.json: schema, claims, excerpts, rights, anchor")
+    s.add_argument("slug")
+    s.add_argument("--strict", action="store_true", help="final-render rules: unverifiable excerpts and rights issues are errors")
+    s.add_argument("--reanchor", action="store_true", help="accept the current script after re-checking the sentence ranges")
+    s.set_defaults(func=cmd_check)
+
+    s = sub.add_parser("list", help="list projects and research")
+    s.set_defaults(func=cmd_list)
+
+    s = sub.add_parser("fonts", help="download the openly licensed fonts used for rendering")
+    s.add_argument("--force", action="store_true")
+    s.set_defaults(func=cmd_fonts)
+
+    s = sub.add_parser("quota", help="show the AFP budget, usage and today's allowance")
+    s.set_defaults(func=cmd_quota)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    setup_console()
+    args = build_parser().parse_args(argv)
+    try:
+        args.func(args)
+        return 0
+    except PvmError as e:
+        print(f"error: {e}", file=sys.stderr, flush=True)
+        return 2
+    except KeyboardInterrupt:
+        return 130

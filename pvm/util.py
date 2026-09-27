@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 class PvmError(RuntimeError):
     """Expected, user-facing failure: the CLI prints the message without a traceback."""
+
+
+def data_root() -> Path:
+    """Where projects/, research/ and cache/ live. PVM_HOME moves them (tests, scratch runs)."""
+    home = os.environ.get("PVM_HOME")
+    return Path(home).resolve() if home else ROOT
+
+
+def data_dir(name: str) -> Path:
+    return data_root() / name
 
 
 def setup_console() -> None:
@@ -51,6 +62,19 @@ def read_text(path: Path) -> str:
     return Path(path).read_text(encoding="utf-8-sig")
 
 
+def _replace(src: str, dst: Path, tries: int = 8) -> None:
+    # Windows refuses to replace a file that another handle has open (a reader thread, antivirus,
+    # the search indexer). Those locks are brief, so retry before giving up.
+    for attempt in range(tries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def write_bytes(path: Path, data: bytes) -> None:
     path = Path(path)
     ensure_dir(path.parent)
@@ -58,7 +82,7 @@ def write_bytes(path: Path, data: bytes) -> None:
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise

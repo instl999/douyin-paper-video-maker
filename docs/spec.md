@@ -838,7 +838,7 @@ Automatic paper discovery, topic ideation, large batches and automatic publishin
 - 100% of sentences are covered by exactly one claim.
 - 100% of `source_fact` claims have at least one excerpt found in the source text (final render, `--strict`).
 - The hook has a claim, and `interpretation`/`advice` hooks state a basis.
-- No unresolved research-language lint warnings at final render.
+- Every research-language lint warning is resolved or deliberately accepted at checkpoint 2. The lint is a heuristic, so it stays a warning.
 
 ### Visual
 
