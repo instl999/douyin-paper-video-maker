@@ -58,18 +58,20 @@ class Settings:
     edge_voice: str
     edge_rate: str
     plan_tier: str
-    afp_daily_budget: int
+    afp_monthly_budget: int
+    afp_daily_budget: int | None  # explicit override; otherwise quota.daily_allowance() paces the month
     contact_email: str | None
     s2_api_key: str | None
     openalex_api_key: str | None
     llm_base_url: str
     llm_api_key: str | None
     llm_model: str
-    browser: str
     style: str
     x264_preset: str
     crf: int
     bgm: str
+    allow_system_fonts: bool
+    ai_label: str  # visible AI-content label; "none" disables it (see spec §13.2 before doing that)
 
     @property
     def tier_limits(self) -> dict[str, int]:
@@ -102,7 +104,8 @@ def get_settings() -> Settings:
             break
 
     tier = get("PVM_PLAN_TIER", "small").lower()
-    daily_default = PLAN_TIERS.get(tier, PLAN_TIERS["small"])["daily"]
+    monthly_default = PLAN_TIERS.get(tier, PLAN_TIERS["small"])["monthly"]
+    daily_override = get("PVM_AFP_DAILY_BUDGET")
     return Settings(
         api_key=api_key,
         api_key_var=api_key_var,
@@ -118,16 +121,18 @@ def get_settings() -> Settings:
         edge_voice=get("PVM_EDGE_VOICE", "zh-CN-YunxiNeural"),
         edge_rate=get("PVM_EDGE_RATE", "+10%"),
         plan_tier=tier,
-        afp_daily_budget=get_int("PVM_AFP_DAILY_BUDGET", daily_default),
+        afp_monthly_budget=get_int("PVM_AFP_MONTHLY_BUDGET", monthly_default),
+        afp_daily_budget=get_int("PVM_AFP_DAILY_BUDGET", 0) if daily_override else None,
         contact_email=get("PVM_CONTACT_EMAIL") or None,
         s2_api_key=get("SEMANTIC_SCHOLAR_API_KEY") or None,
         openalex_api_key=get("OPENALEX_API_KEY") or None,
         llm_base_url=get("PVM_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
         llm_api_key=get("PVM_LLM_API_KEY") or None,
         llm_model=get("PVM_LLM_MODEL", "deepseek-chat"),
-        browser=get("PVM_BROWSER", "auto").lower(),
         style=get("PVM_STYLE", "paper-cut"),
         x264_preset=get("PVM_X264_PRESET", "veryfast"),
         crf=get_int("PVM_CRF", 20),
         bgm=get("PVM_BGM", "none"),
+        allow_system_fonts=get("PVM_ALLOW_SYSTEM_FONTS", "0").lower() in ("1", "true", "yes"),
+        ai_label=get("PVM_AI_LABEL", "含AI生成内容"),
     )

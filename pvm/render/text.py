@@ -49,8 +49,13 @@ def balanced_wrap(text: str, fnt: ImageFont.FreeTypeFont, max_width: float) -> l
 
 
 def text_sprite(lines: list[str], fnt: ImageFont.FreeTypeFont, fill, *, stroke_width: int = 0, stroke_fill=None,
-                line_spacing: float = 1.12, align: str = "center", shadow: tuple | None = None) -> Image.Image:
-    """Render lines to a tight RGBA sprite. shadow = (dx, dy, rgba)."""
+                line_spacing: float = 1.12, align: str = "center", shadow: tuple | None = None,
+                trim: str = "all") -> Image.Image:
+    """Render lines to an RGBA sprite. shadow = (dx, dy, rgba).
+
+    trim="all" crops to the ink. trim="x" crops only the sides and keeps the full line box, so text that
+    changes over time (subtitles) keeps the same height and baseline whatever glyphs it contains.
+    """
     ascent, descent = fnt.getmetrics()
     line_h = (ascent + descent) * line_spacing
     widths = [fnt.getlength(l) for l in lines]
@@ -73,7 +78,11 @@ def text_sprite(lines: list[str], fnt: ImageFont.FreeTypeFont, fill, *, stroke_w
                       stroke_width=sw, stroke_fill=shadow[2])
         draw.text((x, y), line, font=fnt, fill=fill, stroke_width=sw, stroke_fill=stroke_fill)
     bbox = img.getbbox()
-    return img.crop(bbox) if bbox else img
+    if not bbox or trim == "none":
+        return img
+    if trim == "x":
+        return img.crop((bbox[0], 0, bbox[2], img.height))
+    return img.crop(bbox)
 
 
 def fit_lines(lines: list[str], role: str, max_width: float, max_size: int, min_size: int,

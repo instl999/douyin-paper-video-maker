@@ -15,9 +15,8 @@ import httpx
 from . import __version__
 from .config import get_settings
 from .schema import Paper
-from .util import ROOT, PvmError, ensure_dir, log, now_iso, read_json, slugify, warn, write_json, write_text
+from .util import PvmError, data_dir, ensure_dir, log, now_iso, read_json, slugify, warn, write_bytes, write_json, write_text
 
-RESEARCH_DIR = ROOT / "research"
 ALL_SOURCES = ("openalex", "crossref", "europepmc", "arxiv", "s2")
 DEFAULT_SOURCES = ("openalex", "crossref")
 
@@ -40,6 +39,10 @@ TOP_VENUES = {
     "journal of abnormal psychology", "clinical psychological science", "social science & medicine",
     "plos medicine", "elife", "plos biology",
 }
+
+
+def research_dir() -> Path:
+    return data_dir("research")
 
 
 @dataclass
@@ -113,6 +116,23 @@ def _openalex_abstract(inv: dict | None) -> str | None:
     return " ".join(w for _, w in sorted(positions)) or None
 
 
+def _oa_fields(w: dict) -> dict:
+    """Open-access status and license from an OpenAlex work (the authority for both; spec §6.2)."""
+    oa = w.get("open_access") or {}
+    best = w.get("best_oa_location") or {}
+    return {"is_oa": oa.get("is_oa"), "oa_status": oa.get("oa_status"),
+            "license": best.get("license"), "license_version": best.get("version")}
+
+
+def _oa_pdf_urls(w: dict) -> list[str]:
+    urls: list[str] = []
+    for loc in [w.get("best_oa_location") or {}] + list(w.get("locations") or []):
+        u = (loc or {}).get("pdf_url")
+        if u and (loc or {}).get("is_oa", True) and u not in urls:
+            urls.append(u)
+    return urls
+
+
 def _openalex_paper(w: dict) -> Paper:
     loc = w.get("primary_location") or {}
     src = loc.get("source") or {}
@@ -120,11 +140,10 @@ def _openalex_paper(w: dict) -> Paper:
     pages = None
     if biblio.get("first_page"):
         pages = biblio["first_page"] + (f"–{biblio['last_page']}" if biblio.get("last_page") else "")
-    pdfs: list[str] = []
-    for l in [w.get("best_oa_location") or {}, loc] + list(w.get("locations") or []):
-        u = (l or {}).get("pdf_url")
-        if u and u not in pdfs:
-            pdfs.append(u)
+    pdfs = _oa_pdf_urls(w)
+    u = loc.get("pdf_url")
+    if u and u not in pdfs:
+        pdfs.append(u)
     return Paper(
         title=_strip_tags(w.get("title") or w.get("display_name")) or "(untitled)",
         authors=[(a.get("author") or {}).get("display_name", "") for a in (w.get("authorships") or [])],
@@ -139,9 +158,9 @@ def _openalex_paper(w: dict) -> Paper:
         abstract=_openalex_abstract(w.get("abstract_inverted_index")),
         cited_by=w.get("cited_by_count"),
         type=w.get("type"),
-        is_oa=(w.get("open_access") or {}).get("is_oa"),
         openalex_id=w.get("id"),
         origin="openalex",
+        **_oa_fields(w),
     )
 
 
@@ -362,7 +381,8 @@ def _key(p: Paper) -> str:
 
 
 def _merge(into: Paper, other: Paper) -> None:
-    for name in ("abstract", "venue", "volume", "issue", "pages", "url", "year", "type", "openalex_id"):
+    for name in ("abstract", "venue", "volume", "issue", "pages", "url", "year", "type", "openalex_id",
+                 "oa_status", "license", "license_version"):
         if not getattr(into, name) and getattr(other, name):
             setattr(into, name, getattr(other, name))
     if len(other.authors) > len(into.authors):
@@ -371,8 +391,46 @@ def _merge(into: Paper, other: Paper) -> None:
     for u in other.pdf_urls:
         if u not in into.pdf_urls:
             into.pdf_urls.append(u)
-    if other.is_oa:
-        into.is_oa = True
+    if other.is_oa is not None and (into.is_oa is None or other.is_oa):
+        into.is_oa = other.is_oa
+
+
+def enrich_from_openalex(client, papers: list[Paper]) -> int:
+    """Fill open-access status and license from OpenAlex for papers found elsewhere.
+
+    Crossref's PDF links are publisher text-mining endpoints, not evidence of open access, so papers that
+    only Crossref (or another index) found would otherwise look closed or, worse, falsely open.
+    One request covers up to 40 DOIs. Returns how many papers were enriched.
+    """
+    todo = [p for p in papers if p.doi and not p.openalex_id and not any(ch in p.doi for ch in ",|")]
+    done = 0
+    for i in range(0, len(todo), 40):
+        batch = todo[i:i + 40]
+        try:
+            r = _get(client, "https://api.openalex.org/works", _openalex_params({
+                "filter": "doi:" + "|".join(p.doi for p in batch), "per_page": 50,
+                "select": "id,doi,open_access,best_oa_location,locations",
+            }), tries=2)
+        except PvmError as e:
+            warn(f"openalex enrichment skipped: {e}")
+            return done
+        if r.status_code != 200:
+            warn(f"openalex enrichment: HTTP {r.status_code}")
+            continue
+        by_doi = {_norm_doi(w.get("doi")): w for w in r.json().get("results", [])}
+        for p in batch:
+            w = by_doi.get(p.doi)
+            if not w:
+                continue
+            for name, value in _oa_fields(w).items():
+                setattr(p, name, value)
+            for u in reversed(_oa_pdf_urls(w)):
+                if u in p.pdf_urls:
+                    p.pdf_urls.remove(u)
+                p.pdf_urls.insert(0, u)  # real open-access copies first
+            p.openalex_id = w.get("id")
+            done += 1
+    return done
 
 
 def _score(c: Candidate, n_queries: int, this_year: int) -> None:
@@ -383,7 +441,7 @@ def _score(c: Candidate, n_queries: int, this_year: int) -> None:
     venue = (p.venue or "").strip().lower()
     top = venue in TOP_VENUES
     venue_s = 1.0 if top else (0.35 if venue else 0.0)
-    oa = 1.0 if (p.is_oa or p.pdf_urls) else 0.0
+    oa = 1.0 if p.is_oa else 0.0
     age = this_year - (p.year or this_year - 30)
     recency = 1.0 if age <= 6 else max(0.3, 1.0 - (age - 6) / 40.0)
     ptype = (p.type or "").lower()
@@ -403,6 +461,8 @@ def _score(c: Candidate, n_queries: int, this_year: int) -> None:
         c.badges.append("review/meta")
     if oa:
         c.badges.append("OA")
+    if p.license and p.license_version == "publishedVersion":
+        c.badges.append(p.license)
     if ptype == "preprint":
         c.badges.append("preprint")
 
@@ -415,7 +475,7 @@ def run_research(topic: str, queries: list[str], *, slug: str | None = None, lim
     if unknown:
         raise PvmError(f"unknown sources {unknown}; choose from {', '.join(ALL_SOURCES)}")
     slug = slug or slugify(topic, "topic")
-    out_dir = ensure_dir(RESEARCH_DIR / slug)
+    out_dir = ensure_dir(research_dir() / slug)
     merged: dict[str, Candidate] = {}
     with _client() as client:
         for q in queries:
@@ -434,10 +494,13 @@ def run_research(topic: str, queries: list[str], *, slug: str | None = None, lim
                         merged[k] = Candidate(paper=p)
                     merged[k].found_by.append(f"{src}:{q}")
                     merged[k].ranks.append(rank)
+        cands = [c for c in merged.values() if c.paper.title and c.paper.title != "(untitled)"]
+        n = enrich_from_openalex(client, [c.paper for c in cands])
+        if n:
+            log(f"  openalex  open-access status and license added for {n} papers found elsewhere")
     this_year = datetime.now().year
-    cands = [c for c in merged.values() if c.paper.title and c.paper.title != "(untitled)"]
     if oa_only:
-        cands = [c for c in cands if c.paper.is_oa or c.paper.pdf_urls]
+        cands = [c for c in cands if c.paper.is_oa]
     for c in cands:
         _score(c, len(queries), this_year)
     cands.sort(key=lambda c: c.score, reverse=True)
@@ -481,7 +544,9 @@ def render_candidates_md(payload: dict) -> str:
         lines.append(f"- {authors} ({p.get('year', 'n.d.')}) *{p.get('venue') or ''}*")
         if p.get("doi"):
             lines.append(f"- DOI: https://doi.org/{p['doi']}")
-        lines.append(f"- cited by {p.get('cited_by', 0)}; OA: {bool(p.get('is_oa') or p.get('pdf_urls'))}; score {c['score']}")
+        license_ = f"{p['license']} ({p.get('license_version') or 'version unknown'})" if p.get("license") else "none"
+        lines.append(f"- cited by {p.get('cited_by', 0)}; open access: {p.get('oa_status') or bool(p.get('is_oa'))}; "
+                     f"license: {license_}; score {c['score']}")
         if p.get("abstract"):
             lines.append(f"- Abstract: {p['abstract'][:900]}{'…' if len(p['abstract']) > 900 else ''}")
         lines.append("")
@@ -489,7 +554,7 @@ def render_candidates_md(payload: dict) -> str:
 
 
 def load_candidates(slug: str) -> dict:
-    data = read_json(RESEARCH_DIR / slug / "candidates.json")
+    data = read_json(research_dir() / slug / "candidates.json")
     if data is None:
         raise PvmError(f"no research found for '{slug}' (looked in research/{slug}/candidates.json)")
     return data
@@ -508,10 +573,35 @@ def pick_candidate(ref: str) -> Paper:
 
 def list_research() -> list[dict]:
     out = []
-    if RESEARCH_DIR.exists():
-        for d in sorted(RESEARCH_DIR.iterdir()):
+    root = research_dir()
+    if root.exists():
+        for d in sorted(root.iterdir()):
             data = read_json(d / "candidates.json")
             if data:
                 out.append({"slug": d.name, "topic": data.get("topic"), "n": len(data.get("candidates", [])),
                             "created": data.get("created")})
     return out
+
+
+# ---------------------------------------------------------------- PDF download
+
+def download_pdf(paper: Paper, dest: Path) -> str | None:
+    """Save the first open-access PDF that downloads cleanly. Returns its URL, or None.
+
+    Only called for open-access papers: publisher links for closed papers need a subscription, and the
+    operator supplies those PDFs by hand.
+    """
+    if not paper.is_oa:
+        return None
+    with _client() as client:
+        for url in paper.pdf_urls:
+            try:
+                r = client.get(url, timeout=httpx.Timeout(60.0, connect=15.0))
+            except httpx.HTTPError as e:
+                warn(f"pdf download failed ({url}): {e}")
+                continue
+            if r.status_code == 200 and r.content[:5] == b"%PDF-":
+                write_bytes(dest, r.content)
+                return url
+            warn(f"pdf download: {url} returned HTTP {r.status_code} ({r.headers.get('content-type', '?')})")
+    return None
