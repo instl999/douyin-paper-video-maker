@@ -185,6 +185,61 @@ def cmd_voice(a) -> None:
     log(f"  hook on screen {tl.hook[0]:.1f} - {tl.hook[1]:.1f} s")
 
 
+# ---------------------------------------------------------------- render and QA
+
+def _print_qa(result: dict) -> bool:
+    for c in result["checks"]:
+        log(f"  {'ok  ' if c['ok'] else 'FAIL'} {c['name']:<14} {c['detail']}")
+    return result["passed"]
+
+
+def cmd_animatic(a) -> None:
+    from .pipeline import prepare
+    from .project import Project
+    from .render.video import render, write_manifest
+
+    p = Project.load(a.slug)
+    sb, _, tl = prepare(p, engine=a.engine)
+    summary = render(p, sb, tl, ratio=a.ratio, kind="animatic", jobs=a.jobs)
+    write_manifest(p, sb, tl, [summary], "animatic")
+    log("review the timing, the claims and the panel briefs; nothing was spent on images")
+
+
+def cmd_render(a) -> None:
+    from .pipeline import prepare
+    from .project import Project
+    from .qa import run_qa
+    from .render.video import render, save_cover, write_description, write_manifest
+    from .util import write_text
+
+    p = Project.load(a.slug)
+    kind = "draft" if a.draft else "final"
+    sb, _, tl = prepare(p, engine=a.engine, strict=kind == "final")
+    ratios = ["3x4", "9x16"] if a.ratio == "both" else [a.ratio]
+    renders = [render(p, sb, tl, ratio=r, kind=kind, jobs=a.jobs) for r in ratios]
+    save_cover(p, sb, tl, ratios[0])
+    write_description(p, sb)
+    write_text(p.output_dir / "subtitles.srt", (p.audio_dir / "subtitles.srt").read_text(encoding="utf-8"))
+    write_manifest(p, sb, tl, renders, kind)
+    passed = True
+    for r in ratios:
+        log(f"QA {kind}_{r}.mp4:")
+        passed = _print_qa(run_qa(p, r, kind)) and passed
+    log(f"outputs in {p.output_dir}: {', '.join(Path(x['file']).name for x in renders)}, cover.png, "
+        "subtitles.srt, description.txt (publish checklist), manifest")
+    if not passed:
+        raise PvmError("QA found problems (see above); the files were still written")
+
+
+def cmd_qa(a) -> None:
+    from .project import Project
+    from .qa import run_qa
+
+    p = Project.load(a.slug)
+    if not _print_qa(run_qa(p, a.ratio, a.kind, Path(a.file) if a.file else None)):
+        raise PvmError("QA found problems")
+
+
 # ---------------------------------------------------------------- setup and quota
 
 def cmd_fonts(a) -> None:
@@ -259,6 +314,28 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--engine", choices=["edge", "ark"], help="override PVM_TTS_ENGINE and the storyboard")
     s.add_argument("--force", action="store_true", help="rebuild voice.wav even if nothing changed")
     s.set_defaults(func=cmd_voice)
+
+    s = sub.add_parser("animatic", help="zero-quota preview: real voice and timing, placeholder panels")
+    s.add_argument("slug")
+    s.add_argument("--ratio", choices=["3x4", "9x16"], default="3x4")
+    s.add_argument("--engine", choices=["edge", "ark"])
+    s.add_argument("--jobs", type=int, help="parallel render processes (default: automatic)")
+    s.set_defaults(func=cmd_animatic)
+
+    s = sub.add_parser("render", help="final render with strict checks, cover, description, manifest and QA")
+    s.add_argument("slug")
+    s.add_argument("--ratio", choices=["3x4", "9x16", "both"], default="3x4")
+    s.add_argument("--draft", action="store_true", help="relaxed checks; missing images become placeholders")
+    s.add_argument("--engine", choices=["edge", "ark"])
+    s.add_argument("--jobs", type=int, help="parallel render processes (default: automatic)")
+    s.set_defaults(func=cmd_render)
+
+    s = sub.add_parser("qa", help="check a rendered file against the acceptance criteria")
+    s.add_argument("slug")
+    s.add_argument("--ratio", choices=["3x4", "9x16"], default="3x4")
+    s.add_argument("--kind", choices=["final", "draft"], default="final")
+    s.add_argument("--file", help="check this file instead")
+    s.set_defaults(func=cmd_qa)
 
     s = sub.add_parser("list", help="list projects and research")
     s.set_defaults(func=cmd_list)

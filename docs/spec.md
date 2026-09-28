@@ -232,7 +232,7 @@ The central boundary is unchanged:
 | Images | Seedream through Agent Plan, behind an adapter | Fallback providers |
 | Voice | Ark TTS (Agent Plan) for final renders; edge-tts (free) for drafts and animatics | — |
 | Timing | TTS word timestamps; `jieba` word boundaries as a fallback | Forced alignment, only for human voiceover |
-| Rendering | Pillow compositor → FFmpeg (x264, AAC, two-pass loudness) | GPU or HTML renderer |
+| Rendering | Pillow compositor in parallel worker processes → FFmpeg (x264, AAC, compression + limiting to the loudness target) | GPU or HTML renderer |
 | QA | FFmpeg filters (freezedetect, blackdetect, ebur128); OCR (RapidOCR) | — |
 | Monitoring | AFP ledger and per-video manifest | Metrics service |
 
@@ -253,7 +253,7 @@ script.txt ─► sentences ─► storyboard.json (claims, hook claim, scenes)
                                    │
         prompt compiler ─► image provider (cache · ledger · retries) ─► OCR gate ─► posters
                                    │
-           renderer (Pillow) ─► FFmpeg (loudness, AIGC metadata) ─► QA ── checkpoint 3
+           renderer (Pillow, parallel) ─► FFmpeg (loudness, AIGC metadata) ─► QA ── checkpoint 3
 ```
 
 ### 5.3 Project layout on disk
@@ -527,7 +527,7 @@ Scene durations are never fixed before the voice exists.
 
 ### 10.5 Audio
 
-- Loudness: −12 LUFS integrated (±1) with a true-peak ceiling of −1 dBTP, using two-pass `loudnorm`.
+- Loudness: −12 LUFS integrated (±1) with a true-peak ceiling of −1 dBTP. Speech peaks sit 15–20 dB above its loudness, so gain alone cannot reach this; `loudnorm` stalls near −15 LUFS. The chain is gentle compression (−24 dB, 4:1), measured gain, and a 4×-oversampled peak limiter at −1.5 dBFS, with the gain re-measured once after limiting. Measured on the first real render: −12.3 LUFS, −1.4 dBTP.
 - Background music is off by default. Add it in the Douyin app from its licensed library. If music is baked into the render, keep the license records.
 
 ### 10.6 Safe areas (defaults; verify on a device)

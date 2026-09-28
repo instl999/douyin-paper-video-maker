@@ -39,6 +39,45 @@ def loose(text: str) -> str:
     return _NON_WORD.sub("", normalize(text))
 
 
+def _mapped(raw: str, letters_only: bool) -> tuple[str, list[int]]:
+    """Normalized text plus, for each of its characters, the index of the raw character it came from."""
+    out: list[str] = []
+    index: list[int] = []
+    space = True
+    for i, ch in enumerate(raw):
+        for c in unicodedata.normalize("NFKC", ch).translate(_PLAIN).lower():
+            if letters_only:
+                if c.isalnum():
+                    out.append(c)
+                    index.append(i)
+            elif c.isspace():
+                if not space:
+                    out.append(" ")
+                    index.append(i)
+                    space = True
+            else:
+                out.append(c)
+                index.append(i)
+                space = False
+    return "".join(out), index
+
+
+def locate(raw: str, query: str) -> tuple[int, int] | None:
+    """[start, end) of `query` in `raw`, tolerant of thin spaces, ligatures, case and line-break hyphenation.
+
+    PDF page text often differs from the words a person types (e.g. "21\\u2009billion"); indices refer to
+    `raw`, so they map straight onto the PDF's character boxes.
+    """
+    for letters_only in (False, True):
+        text, index = _mapped(raw, letters_only)
+        q, _ = _mapped(query, letters_only)
+        q = q.strip()
+        pos = text.find(q) if q else -1
+        if pos >= 0:
+            return index[pos], index[pos + len(q) - 1] + 1
+    return None
+
+
 # ---------------------------------------------------------------- source text
 
 def pdf_text(path: Path) -> str:

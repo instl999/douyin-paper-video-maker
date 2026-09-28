@@ -23,6 +23,9 @@ writing a storyboard.
    source text to quote.
 5. Write `projects/<project>/storyboard.json` (format below).
 6. Run `pvm check <project>` until it prints `ok`. Before a final render, `pvm check <project> --strict` must pass too.
+7. `pvm voice <project>` builds the narration and timeline; `pvm animatic <project>` renders the zero-quota preview
+   for checkpoint 2.
+8. `pvm render <project> --ratio both` renders the final videos and runs QA; `--draft` allows placeholder panels.
 
 ## Writing storyboard.json (version 2)
 
