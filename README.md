@@ -30,6 +30,7 @@ pvm source sunk-cost --find "sunk cost"      # the exact source text to quote as
 pvm check sunk-cost
 pvm voice sunk-cost                          # narration, timeline and subtitles (edge-tts or Ark)
 pvm animatic sunk-cost                       # checkpoint 2: full-length preview, no image quota spent
+pvm images sunk-cost --dry-run              # prompts and AFP estimate; then without --dry-run to generate
 pvm render sunk-cost --ratio both            # final 3:4 + 9:16, cover, description, manifest, QA
 pvm render sunk-cost --draft                 # same, but missing images become placeholders
 ```
@@ -41,8 +42,8 @@ pvm render sunk-cost --draft                 # same, but missing images become p
 | M1 Foundation | CLI; claims with verbatim-excerpt verification; storyboard anchor; open-access and license detection; font policy; subtitle fixes; quota pacing; tests | done |
 | M2 Voice and timeline | TTS per sentence with word timestamps and a cache; voice track; timeline; SRT | done |
 | M3 Renderer and animatic | Compositor for every scene type; hook, subtitles, source chip, AI label; parallel x264 encode; loudness to −12 LUFS / −1 dBTP; AIGC metadata; animatic; QA | done |
-| M4 Images | Seedream adapter, prompt compiler, cache, OCR gate | next |
-| M5 Planner | DeepSeek storyboard drafts and claim review | planned |
+| M4 Images | Seedream adapter, prompt compiler, per-attempt cache, retry budget with OCR label gate, AFP ledger, review/accept flow | done (live API call not yet exercised) |
+| M5 Planner | DeepSeek storyboard drafts and claim review | next |
 
 ## Tests
 

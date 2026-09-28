@@ -430,7 +430,7 @@ class ImageRenderer(SceneRenderer):
     def __init__(self, ctx: Context, scene, timing: SceneTiming):
         super().__init__(ctx, scene, timing)
         self.base = self.background()
-        top = self.title(self.base, scene.title, self.s(118)) + self.s(30) if scene.title else self.s(60)
+        top = self.header()
         x0 = self.s(40)
         size = (self.W - 2 * x0, int(self.H * PANELS_BOTTOM) - top)
         image = self.find_image()
@@ -440,6 +440,9 @@ class ImageRenderer(SceneRenderer):
         picture = cover_fit(image, inner) if image is not None else self.placeholder(inner, scene.visual, [])
         body.paste(picture, (inset, inset), rounded_mask(inner, self.s(14)))
         self.paste_sprite(self.base, body, (x0, top), blur=8, drop=3, alpha=70)
+
+    def header(self) -> int:
+        return self.title(self.base, self.scene.title, self.s(118)) + self.s(30) if self.scene.title else self.s(60)
 
     def frame(self, t: float) -> Image.Image:
         return zoom(self.base.copy(), 1 + 0.04 * ease(self.progress(t)), self.W / 2, self.H * 0.45)
@@ -457,6 +460,16 @@ class TextRenderer(SceneRenderer):
     def frame(self, t: float) -> Image.Image:
         img = Image.blend(self.plain, self.base, ramp(t, self.timing.start, 0.3))
         return zoom(img, 1 + 0.03 * ease(self.progress(t)), self.W / 2, self.H * 0.42)
+
+
+def generation_box(ctx: Context, scene) -> tuple[int, int]:
+    """Size of the area a generated image fills, so it can be requested at that aspect ratio (spec §8.4)."""
+    cls = {"poster": PosterRenderer, "summary": SummaryRenderer, "image": ImageRenderer}[scene.type]
+    probe = cls.__new__(cls)  # geometry only: no image lookup, no placeholders
+    SceneRenderer.__init__(probe, ctx, scene, SceneTiming(scene.id, scene.type, 0.0, 1.0))
+    probe.base = probe.background()
+    top = probe.header()
+    return probe.W - 2 * probe.s(40), int(probe.H * PANELS_BOTTOM) - top
 
 
 RENDERERS = {"paper": PaperRenderer, "paper_scroll": ScrollRenderer, "poster": PosterRenderer,

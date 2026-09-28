@@ -185,6 +185,57 @@ def cmd_voice(a) -> None:
     log(f"  hook on screen {tl.hook[0]:.1f} - {tl.hook[1]:.1f} s")
 
 
+# ---------------------------------------------------------------- images
+
+def cmd_images(a) -> None:
+    from .config import get_settings
+    from .images import accept_candidate, run_images
+    from .project import Project
+    from .quota import status
+
+    p = Project.load(a.slug)
+    if a.accept:
+        log(f"accepted {accept_candidate(p, a.accept)} (recorded as an operator decision)")
+        return
+    results = run_images(p, only=a.scene, attempts=a.attempts, regenerate=a.regenerate, dry_run=a.dry_run)
+    if not results:
+        log("no scenes need generated images")
+        return
+    review = []
+    for r in results:
+        if r.status == "dry-run":
+            log(f"--- {r.scene}: {r.size[0]}x{r.size[1]}, {r.afp} AFP per attempt\n{r.prompt}\n")
+        elif r.status == "up-to-date":
+            log(f"  {r.scene:<12} up to date      {r.file}")
+        elif r.status == "accepted":
+            log(f"  {r.scene:<12} accepted        attempt {len(r.attempts)}  {r.file}")
+        else:
+            last = r.attempts[-1]
+            problems = "; ".join(filter(None, [
+                "labels not found: " + "、".join(last["missing"]) if last["missing"] else "",
+                "model drew letters or digits: " + " / ".join(last["forbidden"]) if last["forbidden"] else ""]))
+            log(f"  {r.scene:<12} NEEDS REVIEW    {problems}; candidate {r.file}")
+            review.append(r.scene)
+    settings = get_settings()
+    if a.dry_run:
+        todo = [r for r in results if r.status == "dry-run"]
+        attempts = a.attempts or settings.image_attempts
+        log(f"estimate: {len(todo)} image(s), {len(todo) * settings.afp_per_image:,} AFP at one attempt each, up to "
+            f"{len(todo) * settings.afp_per_image * attempts:,} with retries; today's allowance "
+            f"{status().allowance_today:,} AFP")
+    else:
+        log(f"spent {sum(r.afp for r in results):,} AFP; today's allowance left {status().allowance_today:,} AFP")
+    if review:
+        raise PvmError(f"look at the candidates, then regenerate or accept: pvm images {a.slug} --accept <scene>")
+
+
+def _warn_stale(p, sb) -> None:
+    from .images import stale_images
+
+    for scene_id in stale_images(p, sb):
+        warn(f"{scene_id}: the image was generated for an older brief, labels or style; run  pvm images {p.slug}")
+
+
 # ---------------------------------------------------------------- render and QA
 
 def _print_qa(result: dict) -> bool:
@@ -215,6 +266,7 @@ def cmd_render(a) -> None:
     p = Project.load(a.slug)
     kind = "draft" if a.draft else "final"
     sb, _, tl = prepare(p, engine=a.engine, strict=kind == "final")
+    _warn_stale(p, sb)
     ratios = ["3x4", "9x16"] if a.ratio == "both" else [a.ratio]
     renders = [render(p, sb, tl, ratio=r, kind=kind, jobs=a.jobs) for r in ratios]
     save_cover(p, sb, tl, ratios[0])
@@ -314,6 +366,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--engine", choices=["edge", "ark"], help="override PVM_TTS_ENGINE and the storyboard")
     s.add_argument("--force", action="store_true", help="rebuild voice.wav even if nothing changed")
     s.set_defaults(func=cmd_voice)
+
+    s = sub.add_parser("images", help="generate poster images (Seedream) with the OCR label check")
+    s.add_argument("slug")
+    s.add_argument("--scene", action="append", help="only this scene (repeatable)")
+    s.add_argument("--attempts", type=int, help="retry budget per image (default PVM_IMAGE_ATTEMPTS or 3)")
+    s.add_argument("--regenerate", action="store_true", help="generate again even if an accepted image is current")
+    s.add_argument("--dry-run", action="store_true", help="print the prompts and the AFP estimate; call nothing")
+    s.add_argument("--accept", metavar="SCENE", help="accept a candidate that failed the OCR check after reviewing it")
+    s.set_defaults(func=cmd_images)
 
     s = sub.add_parser("animatic", help="zero-quota preview: real voice and timing, placeholder panels")
     s.add_argument("slug")

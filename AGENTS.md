@@ -25,7 +25,10 @@ writing a storyboard.
 6. Run `pvm check <project>` until it prints `ok`. Before a final render, `pvm check <project> --strict` must pass too.
 7. `pvm voice <project>` builds the narration and timeline; `pvm animatic <project>` renders the zero-quota preview
    for checkpoint 2.
-8. `pvm render <project> --ratio both` renders the final videos and runs QA; `--draft` allows placeholder panels.
+8. `pvm images <project> --dry-run` shows the compiled prompts and the AFP estimate; without `--dry-run` it generates,
+   checks every label with OCR and retries up to the budget. A failed image is left as `visuals/<scene>.candidate.png`
+   for review (`--accept <scene>` after looking at it).
+9. `pvm render <project> --ratio both` renders the final videos and runs QA; `--draft` allows placeholder panels.
 
 ## Writing storyboard.json (version 2)
 

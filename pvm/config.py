@@ -60,6 +60,8 @@ class Settings:
     plan_tier: str
     afp_monthly_budget: int
     afp_daily_budget: int | None  # explicit override; otherwise quota.daily_allowance() paces the month
+    afp_per_image: int  # planning figure from the spec (§12); revalidate against the account
+    image_attempts: int  # retry budget per image, OCR failures included (spec §8.7)
     contact_email: str | None
     s2_api_key: str | None
     openalex_api_key: str | None
@@ -123,6 +125,8 @@ def get_settings() -> Settings:
         plan_tier=tier,
         afp_monthly_budget=get_int("PVM_AFP_MONTHLY_BUDGET", monthly_default),
         afp_daily_budget=get_int("PVM_AFP_DAILY_BUDGET", 0) if daily_override else None,
+        afp_per_image=get_int("PVM_AFP_PER_IMAGE", 99),
+        image_attempts=max(1, get_int("PVM_IMAGE_ATTEMPTS", 3)),
         contact_email=get("PVM_CONTACT_EMAIL") or None,
         s2_api_key=get("SEMANTIC_SCHOLAR_API_KEY") or None,
         openalex_api_key=get("OPENALEX_API_KEY") or None,
