@@ -1,0 +1,9 @@
+{
+  "name": "paper-cut",
+  "version": 1,
+  "anchor": "paper-cut collage explainer illustration, warm ivory paper background, layered cut-paper shapes with visible paper grain and torn edges, soft drop shadows, clean dark ink outlines, restrained navy and ochre accents, calm research-explainer mood, generous empty space",
+  "mascot": "the same original mascot in every panel: a friendly young researcher with short dark hair and a small ochre hair clip, round thin-rimmed glasses, a navy cardigan over a cream shirt, simple round face with dot eyes, drawn as layered cut paper",
+  "avoid": "no resemblance to existing anime or cartoon characters, no white spiky hair",
+  "references": [],
+  "notes": "Placeholder design (spec §9.1): replace the mascot description with the channel's own character, and list 2-3 pose images from assets/mascot/ in references once the pose library exists."
+}
