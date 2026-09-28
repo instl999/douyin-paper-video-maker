@@ -26,8 +26,9 @@ pvm script sunk-cost --file script.txt
 pvm paper sunk-cost --pick sunk-cost:c01     # attaches src1; downloads the PDF if it is open access
 pvm sentences sunk-cost                      # numbered sentences for storyboard.json
 pvm source sunk-cost --find "sunk cost"      # the exact source text to quote as evidence
-# write projects\sunk-cost\storyboard.json (see AGENTS.md), then:
-pvm check sunk-cost
+pvm plan sunk-cost --auto                    # LLM draft of storyboard.json (or write it by hand: AGENTS.md)
+pvm check sunk-cost                          # schema, claims, verbatim excerpts, rights, anchor
+pvm review sunk-cost                         # LLM check of each claim and the hook for overreach
 pvm voice sunk-cost                          # narration, timeline and subtitles (edge-tts or Ark)
 pvm animatic sunk-cost                       # checkpoint 2: full-length preview, no image quota spent
 pvm images sunk-cost --dry-run              # prompts and AFP estimate; then without --dry-run to generate
@@ -43,7 +44,7 @@ pvm render sunk-cost --draft                 # same, but missing images become p
 | M2 Voice and timeline | TTS per sentence with word timestamps and a cache; voice track; timeline; SRT | done |
 | M3 Renderer and animatic | Compositor for every scene type; hook, subtitles, source chip, AI label; parallel x264 encode; loudness to −12 LUFS / −1 dBTP; AIGC metadata; animatic; QA | done |
 | M4 Images | Seedream adapter, prompt compiler, per-attempt cache, retry budget with OCR label gate, AFP ledger, review/accept flow | done (live API call not yet exercised) |
-| M5 Planner | DeepSeek storyboard drafts and claim review | next |
+| M5 Planner | DeepSeek storyboard drafts (checked, one repair round) and claim review | done (live API call not yet exercised) |
 
 ## Tests
 

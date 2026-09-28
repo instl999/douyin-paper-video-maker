@@ -185,6 +185,43 @@ def cmd_voice(a) -> None:
     log(f"  hook on screen {tl.hook[0]:.1f} - {tl.hook[1]:.1f} s")
 
 
+# ---------------------------------------------------------------- LLM planner and claim review
+
+def cmd_plan(a) -> None:
+    from .config import get_settings
+    from .llm import make_llm
+    from .planner import plan
+    from .project import Project
+
+    if not a.auto:
+        raise PvmError("use --auto to draft the storyboard with the LLM, or write storyboard.json by hand (AGENTS.md)")
+    p = Project.load(a.slug)
+    meta = plan(p, make_llm(get_settings()), force=a.force)
+    log(f"draft written to {meta['file']} ({meta['model']}, {meta['rounds']} round(s))")
+    for w in meta["warnings"]:
+        log(f"  warning: {w}")
+    for e in meta["errors"]:
+        log(f"  ERROR:   {e}")
+    if meta["errors"]:
+        raise PvmError(f"the draft still has problems; fix {meta['file']}, then run  pvm check {a.slug}")
+    log(f"next: read it, then  pvm check {a.slug}  and  pvm review {a.slug}")
+
+
+def cmd_review(a) -> None:
+    from .config import get_settings
+    from .llm import make_llm
+    from .planner import review, unsupported
+    from .project import Project
+
+    result = review(Project.load(a.slug), make_llm(get_settings()))
+    problems = unsupported(result)
+    for line in problems:
+        log(f"  {line}")
+    if not result["passed"]:
+        raise PvmError(f"{len(problems)} claim(s) need attention; details in review.json")
+    log(f"all {len(result['claims'])} claims and the hook are supported by their evidence")
+
+
 # ---------------------------------------------------------------- images
 
 def cmd_images(a) -> None:
@@ -366,6 +403,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--engine", choices=["edge", "ark"], help="override PVM_TTS_ENGINE and the storyboard")
     s.add_argument("--force", action="store_true", help="rebuild voice.wav even if nothing changed")
     s.set_defaults(func=cmd_voice)
+
+    s = sub.add_parser("plan", help="draft storyboard.json with the LLM (DeepSeek), checked like a hand-written one")
+    s.add_argument("slug")
+    s.add_argument("--auto", action="store_true", help="required: draft with the LLM")
+    s.add_argument("--force", action="store_true", help="overwrite storyboard.json instead of writing storyboard.draft.json")
+    s.set_defaults(func=cmd_plan)
+
+    s = sub.add_parser("review", help="LLM check of every claim and the hook against their evidence")
+    s.add_argument("slug")
+    s.set_defaults(func=cmd_review)
 
     s = sub.add_parser("images", help="generate poster images (Seedream) with the OCR label check")
     s.add_argument("slug")
