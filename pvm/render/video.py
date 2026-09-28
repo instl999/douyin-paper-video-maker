@@ -85,19 +85,20 @@ def _render_chunk(job: dict) -> dict:
     comp = Composer(p, sb, tl, L, animatic=job["animatic"], strict=job["strict"])
     cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
            "-s", f"{L.width}x{L.height}", "-r", str(L.fps), "-i", "-", "-an", *_encoder_args(L), job["out"]]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     first, last = job["frames"]
     step = max(1, (last - first) // 4)
-    try:
-        for f in range(first, last):
-            proc.stdin.write(comp.frame(f / L.fps).tobytes())
-            if job["verbose"] and (f - first) % step == 0 and f > first:
-                log(f"  part {job['index'] + 1}/{job['parts']}: {100 * (f - first) // (last - first)}%")
-        proc.stdin.close()
-    except BrokenPipeError:
-        pass
-    err = proc.stderr.read().decode("utf-8", "replace")
-    if proc.wait() != 0:
+    with subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE) as proc:  # closes the pipes on exit
+        try:
+            for f in range(first, last):
+                proc.stdin.write(comp.frame(f / L.fps).tobytes())
+                if job["verbose"] and (f - first) % step == 0 and f > first:
+                    log(f"  part {job['index'] + 1}/{job['parts']}: {100 * (f - first) // (last - first)}%")
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        err = proc.stderr.read().decode("utf-8", "replace")
+        code = proc.wait()
+    if code != 0:
         raise PvmError(f"ffmpeg failed while encoding part {job['index'] + 1}:\n{err[-800:]}")
     return {"warnings": comp.ctx.warnings, "visuals": comp.ctx.visuals, "displays": comp.ctx.displays}
 

@@ -158,8 +158,8 @@ class Project:
     def storyboard_data(self) -> dict:
         data = read_json(self.storyboard_path)
         if data is None:
-            raise PvmError(f"no storyboard yet: write {self.storyboard_path} (format: AGENTS.md), "
-                           f"then run  pvm check {self.slug}")
+            raise PvmError(f"no storyboard yet: write {self.storyboard_path} (format: AGENTS.md) or draft one "
+                           f"with  pvm plan {self.slug} --auto, then run  pvm check {self.slug}")
         return data
 
     def check(self, *, strict: bool = False, ignore_anchor: bool = False) -> CheckReport:

@@ -21,7 +21,8 @@ writing a storyboard.
    `projects/<project>/sources/src1.pdf`.
 4. `pvm sentences <project>` prints the numbered sentences. `pvm source <project> --find "<phrase>"` shows the exact
    source text to quote.
-5. Write `projects/<project>/storyboard.json` (format below).
+5. Write `projects/<project>/storyboard.json` (format below), or draft it with `pvm plan <project> --auto` and then
+   read and correct the draft. `pvm review <project>` asks the LLM to check every claim and the hook for overreach.
 6. Run `pvm check <project>` until it prints `ok`. Before a final render, `pvm check <project> --strict` must pass too.
 7. `pvm voice <project>` builds the narration and timeline; `pvm animatic <project>` renders the zero-quota preview
    for checkpoint 2.
