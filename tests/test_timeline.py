@@ -72,8 +72,15 @@ class TimelineTest(unittest.TestCase):
         self.assertAlmostEqual(tl.scenes[1].focus[0][1], tl.scenes[1].start, places=3)
         self.assertAlmostEqual(tl.scenes[1].focus[1][1], s[4].start - 0.15, places=3)
         self.assertEqual(tl.scenes[0].highlights[0][0], "overestimated")
-        self.assertAlmostEqual(tl.hook[1], tl.scenes[0].end, places=3)
+        # The hook would last to the end of sentence 3, but gives way to the highlight that starts sentence 3.
+        self.assertAlmostEqual(tl.hook[1], s[2].start, places=3)
         self.assertEqual(len(tl.facts), 2)
+
+    def test_hook_runs_to_hook_until_without_highlights(self):
+        data = board()
+        data["scenes"][0]["highlights"] = []
+        tl = build_timeline(parse_storyboard(data), fake_track())
+        self.assertAlmostEqual(tl.hook[1], tl.scenes[0].end, places=3)
 
     def test_cues_run_in_order_without_overlap(self):
         cues = build_cues(fake_track().sentences)

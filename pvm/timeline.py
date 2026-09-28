@@ -131,6 +131,9 @@ def build_timeline(sb: Storyboard, track: VoiceTrack) -> Timeline:
 
     hook_n = sb.hook_until or min(HOOK_DEFAULT_SENTENCES, len(ss))
     hook_end = min(_sentence(ss, hook_n).end + 0.3, scenes[0].end)
+    first_marks = [t for _, t in scenes[0].highlights]
+    if first_marks:  # the hook sits over the page, so it gives way to the first highlighted evidence
+        hook_end = min(hook_end, max(min(first_marks), 1.5))
 
     facts = []
     for c in sb.claims:
