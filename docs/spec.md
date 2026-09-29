@@ -228,7 +228,7 @@ The central boundary is unchanged:
 | Interface | `pvm` command-line tool, plus a coding agent that follows `AGENTS.md` | Web console |
 | Orchestration | Stage stamps (input hashes) in `project.json`; content-hash caches | Job queue, workflow engine |
 | Storage | One folder per video under `projects/` | Database, object storage |
-| LLM | DeepSeek API with JSON output | — |
+| LLM | DeepSeek with JSON output: `deepseek-v4-pro` through Agent Plan by default, or DeepSeek's own API | — |
 | Images | Seedream through Agent Plan, behind an adapter | Fallback providers |
 | Voice | Ark TTS (Agent Plan) for final renders; edge-tts (free) for drafts and animatics | — |
 | Timing | TTS word timestamps; `jieba` word boundaries as a fallback | Forced alignment, only for human voiceover |

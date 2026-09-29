@@ -16,6 +16,7 @@ from .util import PvmError, now_iso, stable_hash, write_json
 PLAN_VERSION = 1
 REVIEW_VERSION = 1
 SOURCE_CHARS = 24_000  # abstract plus the start of the full text; enough for the claims a video makes
+PLAN_TOKENS = 16_000  # reasoning models count their thinking against max_tokens
 
 EXAMPLE = {
     "version": 2, "title": "<internal title>", "hook": ["<2-7字>", "<2-7字>"], "hook_until": 3,
@@ -107,7 +108,7 @@ def validate(p: Project, data: dict) -> tuple[list[str], list[str]]:
 def plan(p: Project, llm: LLM, *, force: bool = False, temperature: float = 0.3) -> dict:
     """Draft storyboard.json (or storyboard.draft.json when one exists and force is off)."""
     prompt = plan_prompt(p)
-    reply = llm.json(PLAN_SYSTEM, prompt, temperature=temperature)
+    reply = llm.json(PLAN_SYSTEM, prompt, temperature=temperature, max_tokens=PLAN_TOKENS)
     draft = reply.data
     errors, warnings = validate(p, draft)
     rounds = 1
@@ -115,7 +116,7 @@ def plan(p: Project, llm: LLM, *, force: bool = False, temperature: float = 0.3)
         repair = (prompt + "\n\nYOUR PREVIOUS STORYBOARD:\n" + json.dumps(draft, ensure_ascii=False)
                   + "\n\nA program found these problems:\n" + "\n".join(f"- {e}" for e in errors)
                   + "\n\nReturn the corrected storyboard as one JSON object. Keep everything that was right.")
-        reply = llm.json(PLAN_SYSTEM, repair, temperature=temperature)
+        reply = llm.json(PLAN_SYSTEM, repair, temperature=temperature, max_tokens=PLAN_TOKENS)
         draft = reply.data
         errors, warnings = validate(p, draft)
         rounds = 2
@@ -151,9 +152,11 @@ def review(p: Project, llm: LLM) -> dict:
     hook = {"lines": sb.hook, "type": sb.hook_claim.type if sb.hook_claim else None,
             "excerpts": [e.excerpt for e in sb.hook_claim.evidence] if sb.hook_claim else [],
             "basis": sb.hook_claim.basis if sb.hook_claim else None}
-    abstracts = "\n".join(f"[{sid}] {paper.title}: {paper.abstract or '(no abstract)'}" for sid, paper in p.sources().items())
-    user = json.dumps({"claims": items, "hook": hook}, ensure_ascii=False, indent=1) + "\n\nSOURCES:\n" + abstracts
-    reply = llm.json(REVIEW_SYSTEM, user, temperature=0.0)
+    # The citation carries journal, year and authors, which sentences introducing the paper rely on.
+    sources = "\n".join(f"[{sid}] {paper.citation()}\n    abstract: {paper.abstract or '(none)'}"
+                        for sid, paper in p.sources().items())
+    user = json.dumps({"claims": items, "hook": hook}, ensure_ascii=False, indent=1) + "\n\nSOURCES:\n" + sources
+    reply = llm.json(REVIEW_SYSTEM, user, temperature=0.0, max_tokens=PLAN_TOKENS)
     result = {"at": now_iso(), "prompt_version": REVIEW_VERSION, "model": reply.model,
               "input_hash": stable_hash([REVIEW_SYSTEM, user])[:16], "claims": [], "hook": reply.data.get("hook") or {}}
     by_index = {int(c.get("index", 0)): c for c in reply.data.get("claims", []) if isinstance(c, dict)}

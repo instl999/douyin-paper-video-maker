@@ -82,7 +82,9 @@ class PlannerTest(TempHome):
         verdicts = {"claims": [{"index": i, "supported": True, "issues": [], "fix": ""} for i in range(1, 7)],
                     "hook": {"supported": True, "issues": [], "fix": ""}}
         verdicts["claims"][2] = {"index": 3, "supported": False, "issues": ["causation"], "fix": "他们发现……相关"}
-        result = review(p, FakeLLM(verdicts))
+        llm = FakeLLM(verdicts)
+        result = review(p, llm)
+        self.assertIn("Journal of Fixtures", llm.prompts[0])  # the citation metadata reaches the reviewer
         self.assertFalse(result["passed"])
         problems = unsupported(result)
         self.assertEqual(len(problems), 1)

@@ -142,7 +142,7 @@ def aigc_record(p: Project, produce_id: str) -> dict:
 
 
 def default_jobs(n_frames: int) -> int:
-    if n_frames < 900:
+    if n_frames < 300:  # below this, starting worker processes costs more than it saves
         return 1
     return max(1, min(4, (os.cpu_count() or 2) // 2))
 

@@ -43,8 +43,20 @@ pvm render sunk-cost --draft                 # same, but missing images become p
 | M1 Foundation | CLI; claims with verbatim-excerpt verification; storyboard anchor; open-access and license detection; font policy; subtitle fixes; quota pacing; tests | done |
 | M2 Voice and timeline | TTS per sentence with word timestamps and a cache; voice track; timeline; SRT | done |
 | M3 Renderer and animatic | Compositor for every scene type; hook, subtitles, source chip, AI label; parallel x264 encode; loudness to −12 LUFS / −1 dBTP; AIGC metadata; animatic; QA | done |
-| M4 Images | Seedream adapter, prompt compiler, per-attempt cache, retry budget with OCR label gate, AFP ledger, review/accept flow | done (live API call not yet exercised) |
-| M5 Planner | DeepSeek storyboard drafts (checked, one repair round) and claim review | done (live API call not yet exercised) |
+| M4 Images | Seedream adapter, prompt compiler, per-attempt cache, retry budget with OCR label gate, AFP ledger, review/accept flow | done, verified live |
+| M5 Planner | DeepSeek storyboard drafts (checked, one repair round) and claim review | done, verified live |
+
+## Live services
+
+One Agent Plan key (`AGENT_PLAN_API_KEY` in `.env`) covers everything. Verified on 2026-09-28:
+
+- **Voice:** Ark TTS with per-character timestamps (`enable_subtitle`).
+- **Images:** Seedream 5.0 lite; the first poster passed the OCR gate on attempt 1 (99 AFP).
+- **Planner and claim review:** DeepSeek V4 Pro through the plan (`deepseek-v4-pro-beta`). Set
+  `PVM_LLM_API_KEY` to use DeepSeek's own API instead.
+
+A worked example lives in `projects/demo-social-capital/`: script, reviewed storyboard, voice, poster,
+and final 3:4 and 9:16 renders that pass QA.
 
 ## Tests
 
