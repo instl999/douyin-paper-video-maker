@@ -22,6 +22,7 @@ GAP = 0.25  # between sentences
 PARA_GAP = 0.5  # after a paragraph
 SILENCE_DB = -45.0
 KEEP_BEFORE, KEEP_AFTER = 0.04, 0.06  # seconds of silence kept around trimmed speech
+PUNCTUATION = "，。、；：！？…—“”‘’「」『』（）《》〈〉·,.;:!?\"'()[] "
 
 
 @dataclass
@@ -66,7 +67,8 @@ def align_words(text: str, words: list[Word], offset: float, duration: float) ->
     out: list[list] = []
     cursor = 0
     for w in words:
-        token = w.text.strip()
+        # Engines attach punctuation to the word before it ("好，"); match the spoken characters only.
+        token = w.text.strip().strip(PUNCTUATION)
         if not token:
             continue
         i = text.find(token, cursor, cursor + len(token) + 8)

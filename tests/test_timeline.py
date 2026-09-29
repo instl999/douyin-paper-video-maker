@@ -43,6 +43,12 @@ class VoiceTest(unittest.TestCase):
         self.assertEqual([w[2:] for w in out], [[0, 4], [4, 5], [6, 8]])
         self.assertAlmostEqual(out[0][0], 0.0)
 
+    def test_per_character_tokens_with_attached_punctuation(self):
+        # Ark TTS (enable_subtitle) returns one token per character, punctuation glued on: "你", "好，", ...
+        words = [Word(0.395, 0.495, "你"), Word(0.495, 0.825, "好，"), Word(0.9, 1.1, "测"), Word(1.1, 1.3, "试。")]
+        out = align_words("你好，测试。", words, offset=0.0, duration=2.0)
+        self.assertEqual([w[2:] for w in out], [[0, 1], [1, 2], [3, 4], [4, 5]])
+
     def test_trim_silence_keeps_a_little_padding(self):
         x = np.concatenate([np.zeros(500), np.full(1000, 0.5), np.zeros(700)]).astype(np.float32)
         y, cut = trim_silence(x, 1000)
