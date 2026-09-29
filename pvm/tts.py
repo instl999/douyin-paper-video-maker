@@ -2,10 +2,10 @@
 
 Engines:
 - edge: edge-tts, free, word boundaries included. Used for drafts and animatics.
-- ark: Volcano Ark TTS through Agent Plan (V3 HTTP unidirectional stream). Written against the public V3
-  API description; word timestamps are parsed defensively, because the plan endpoint's exact timestamp
-  fields have not been verified yet. Without timestamps, the timeline falls back to jieba boundaries and
-  proportional timing.
+- ark: Volcano Ark TTS through Agent Plan (V3 HTTP unidirectional stream: X-Api-Key + X-Api-Resource-Id,
+  newline-delimited JSON with base64 audio, final code 20000000). Verified against the plan endpoint on
+  2026-09-28: word timestamps come back only with audio_params.enable_subtitle, per character, in seconds,
+  as sentence.words[{word, startTime, endTime}] with punctuation attached to the preceding character.
 """
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ class ArkEngine:
     def _one(self, client: httpx.Client, text: str) -> Clip:
         req = {"text": text, "speaker": self.speaker,
                "audio_params": {"format": "mp3", "sample_rate": 24000, "speech_rate": self.speed,
-                                "enable_timestamp": True}}
+                                "enable_subtitle": True}}  # enable_timestamp returns empty words on this API
         if self.instruction:
             req["additions"] = json.dumps({"context_texts": [self.instruction]}, ensure_ascii=False)
         headers = {"X-Api-Key": self.api_key, "X-Api-Resource-Id": ark_resource_id(self.speaker),
