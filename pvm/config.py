@@ -105,13 +105,23 @@ def get_settings() -> Settings:
             api_key, api_key_var = get(var), var
             break
 
+    # LLM: a DeepSeek key of its own wins; otherwise the Agent Plan key covers the planner too, because the plan
+    # includes DeepSeek text models (verified 2026-09-28: deepseek-v4-pro-beta, v4.1-flash, v4-flash-beta).
+    ark_base = get("PVM_ARK_BASE_URL", AGENT_PLAN_BASE_URL).rstrip("/")
+    llm_key = get("PVM_LLM_API_KEY") or None
+    if llm_key or not api_key:
+        llm_base, llm_model = get("PVM_LLM_BASE_URL", "https://api.deepseek.com"), get("PVM_LLM_MODEL", "deepseek-chat")
+    else:
+        llm_key = api_key
+        llm_base, llm_model = get("PVM_LLM_BASE_URL", ark_base), get("PVM_LLM_MODEL", "deepseek-v4-pro-beta")
+
     tier = get("PVM_PLAN_TIER", "small").lower()
     monthly_default = PLAN_TIERS.get(tier, PLAN_TIERS["small"])["monthly"]
     daily_override = get("PVM_AFP_DAILY_BUDGET")
     return Settings(
         api_key=api_key,
         api_key_var=api_key_var,
-        ark_base_url=get("PVM_ARK_BASE_URL", AGENT_PLAN_BASE_URL).rstrip("/"),
+        ark_base_url=ark_base,
         image_provider=get("PVM_IMAGE_PROVIDER", "ark").lower(),
         image_model=get("PVM_IMAGE_MODEL", "doubao-seedream-5.0-lite"),
         image_concurrency=max(1, get_int("PVM_IMAGE_CONCURRENCY", 2)),
@@ -130,9 +140,9 @@ def get_settings() -> Settings:
         contact_email=get("PVM_CONTACT_EMAIL") or None,
         s2_api_key=get("SEMANTIC_SCHOLAR_API_KEY") or None,
         openalex_api_key=get("OPENALEX_API_KEY") or None,
-        llm_base_url=get("PVM_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-        llm_api_key=get("PVM_LLM_API_KEY") or None,
-        llm_model=get("PVM_LLM_MODEL", "deepseek-chat"),
+        llm_base_url=llm_base.rstrip("/"),
+        llm_api_key=llm_key,
+        llm_model=llm_model,
         style=get("PVM_STYLE", "paper-cut"),
         x264_preset=get("PVM_X264_PRESET", "veryfast"),
         crf=get_int("PVM_CRF", 20),
