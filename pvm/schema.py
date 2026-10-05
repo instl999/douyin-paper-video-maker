@@ -244,6 +244,7 @@ class ImageScene(_Scene):
 class TextScene(_Scene):
     type: Literal["text"]
     lines: list[str]
+    pose: str | None = None  # a mascot pose from assets/mascot (e.g. "think", "caution") shown under the text
 
 
 Scene = Annotated[

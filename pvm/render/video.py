@@ -135,10 +135,19 @@ def voice_filter(path: Path) -> tuple[str, dict]:
 
 
 def aigc_record(p: Project, produce_id: str) -> dict:
-    """Implicit AI-content label written into the MP4 (spec §13.2). Field names follow GB 45438-2025 as
-    understood when this was written; verify them against the official text."""
-    return {"Label": "1", "ContentProducer": "pvm", "ProduceID": produce_id, "ReservedCode1": "",
-            "ContentPropagator": "", "PropagateID": "", "ReservedCode2": ""}
+    """Implicit AI-content label (spec §13.2, GB 45438-2025): this object is the value of the file's AIGC metadata
+    field. Label "1" marks the content as AI-generated; the propagator fields are for the publishing platform."""
+    return {"Label": "1", "ContentProducer": get_settings().aigc_producer, "ProduceID": produce_id,
+            "ReservedCode1": "", "ContentPropagator": "", "PropagateID": "", "ReservedCode2": ""}
+
+
+def _xmp(record: dict) -> str:
+    """XMP packet carrying the AIGC record in the TC260 namespace, the image form of the implicit label."""
+    value = json.dumps(record, ensure_ascii=False).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return ('<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+            '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+            '<rdf:Description rdf:about="" xmlns:TC260="http://www.tc260.org.cn/ns/AIGC/1.0/">'
+            f'<TC260:AIGC>{value}</TC260:AIGC></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>')
 
 
 def default_jobs(n_frames: int) -> int:
@@ -209,10 +218,16 @@ def render(p: Project, sb: Storyboard, tl: Timeline, *, ratio: str = "3x4", kind
 
 def save_cover(p: Project, sb: Storyboard, tl: Timeline, ratio: str = "3x4") -> Path:
     """The cover is the opening frame once the hook has popped in: paper evidence plus hook."""
+    from PIL.PngImagePlugin import PngInfo
+
     comp = Composer(p, sb, tl, layout(ratio), animatic=False, strict=False)
     path = p.output_dir / "cover.png"
-    img = comp.frame(min(tl.hook[0] + 0.5, max(0.0, tl.hook[1] - 0.3)))
-    img.save(path)
+    img = comp.frame(min(tl.hook[0] + 0.5, max(0.0, tl.hook[1] - 0.3)))  # includes the visible AI label
+    record = aigc_record(p, f"{p.slug}-cover-{stable_hash([sb.model_dump(), ratio])[:12]}")
+    info = PngInfo()
+    info.add_itxt("XML:com.adobe.xmp", _xmp(record))
+    info.add_text("AIGC", json.dumps(record, ensure_ascii=False))
+    img.save(path, pnginfo=info)
     return path
 
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "working_name": "小研",
+  "design_notes": "Science-communication mascot (spec §9.1). A friendly young researcher: credible (glasses, notebook, cardigan) but warm (round face, small smile), readable at small sizes (simple silhouette, 2.5 heads tall), in the channel palette (navy and ochre on ivory). Deliberately unlike the benchmark creator's persona (white spiky hair, black outfit) and unlike existing anime characters. Poses cover what explainers need, including honest-science moments: caution for counterpoints, shrug for 'we don't know yet'. Props are drawn tinted and outlined (not plain white) so the transparent cut-out keeps them.",
+  "description": "an original science-communicator mascot: a friendly young researcher about two and a half heads tall, short dark-brown hair with a soft side part and one small cowlick, a small ochre hair clip on the left side, round thin navy-rimmed glasses, a round face with dot eyes, light blush and a small smile, a navy cardigan over a cream round-collar shirt, warm brown trousers, simple brown shoes, and a small ochre notebook as a signature prop; drawn as layered cut paper with visible paper grain, clean dark outlines and soft shadows",
+  "avoid": "no resemblance to existing anime, cartoon or game characters; no white or spiky hair; no black outfit; no text, letters, digits, logos or symbols anywhere",
+  "background": "plain flat off-white background with nothing else in the scene, the whole body visible with a generous empty margin, only a soft contact shadow under the feet",
+  "sheet": "character model sheet: the same character shown three times side by side at equal size and evenly spaced, standing, full body: front view, three-quarter view, side view",
+  "poses": {
+    "front": "standing and facing the viewer, relaxed, holding the ochre notebook at the side, friendly smile",
+    "wave": "waving hello with one hand raised high, cheerful",
+    "point": "presenting: one arm stretched to the right with an open palm, looking at the viewer, confident",
+    "explain": "holding the open ochre notebook toward the viewer with both hands, explaining, lively expression",
+    "think": "one hand on the chin, eyes looking up, thoughtful",
+    "idea": "a small glowing paper lightbulb above the head, eyes bright, one finger raised, eureka moment",
+    "surprised": "both hands raised near the face, eyes wide, mouth open in surprise",
+    "puzzled": "head tilted, scratching the back of the head, puzzled expression",
+    "investigate": "looking through a large magnifying glass held in one hand, one eye enlarged by the lens, curious",
+    "read": "reading a pale ochre paper document with a clear dark outline, held in both hands, focused, glasses slightly lowered",
+    "compare": "holding two pale ochre paper cards with clear dark outlines, one in each hand at shoulder height, weighing them, balanced stance",
+    "caution": "one palm raised forward in a gentle wait gesture, serious but kind face",
+    "shrug": "shrugging with both palms open and turned up, small uncertain smile",
+    "thumbsup": "giving a thumbs up with one hand, encouraging smile",
+    "write": "writing in the open ochre notebook with a pencil, concentrating",
+    "walk": "walking toward the right in side view, carrying the notebook under one arm, mid-stride",
+    "worried": "hands clasped in front of the chest, slightly worried face with a small sweat drop",
+    "celebrate": "both arms raised high in celebration, joyful, small paper confetti around"
+  }
+}

@@ -222,7 +222,43 @@ def cmd_review(a) -> None:
     log(f"all {len(result['claims'])} claims and the hook are supported by their evidence")
 
 
-# ---------------------------------------------------------------- images
+# ---------------------------------------------------------------- mascot and images
+
+def cmd_mascot(a) -> None:
+    from .config import get_settings
+    from .mascot import MASCOT_DIR, recut_poses, run_mascot
+    from .quota import status
+
+    if a.recut:
+        names = recut_poses()
+        log(f"re-cut {len(names)} pose(s) from their originals (no quota used); review {MASCOT_DIR / 'contact.png'}")
+        return
+    results = run_mascot(poses=a.pose, sheet_only=a.sheet, regenerate=a.regenerate, dry_run=a.dry_run,
+                         attempts=a.attempts)
+    review, shown = [], 0
+    for r in results:
+        if r.status == "dry-run":
+            if shown < 2:  # the sheet and one pose in full; the rest follow the same template
+                log(f"--- {r.name}\n{r.prompt}\n")
+                shown += 1
+            else:
+                log(f"--- {r.name}")
+        elif r.status == "review":
+            problems = "; ".join(r.attempts[-1]["problems"]) if r.attempts else "?"
+            log(f"  {r.name:<12} NEEDS REVIEW  {problems}")
+            review.append(r.name)
+        else:
+            log(f"  {r.name:<12} {r.status}")
+    settings = get_settings()
+    if a.dry_run:
+        todo = [r for r in results if r.status == "dry-run"]
+        log(f"estimate: {len(todo)} image(s), {len(todo) * settings.afp_per_image:,} AFP at one attempt each; "
+            f"today's allowance {status().allowance_today:,} AFP")
+    else:
+        log(f"spent {sum(r.afp for r in results):,} AFP; review {MASCOT_DIR / 'contact.png'}")
+    if review:
+        raise PvmError(f"{len(review)} image(s) need review: see the .candidate.png files in {MASCOT_DIR}")
+
 
 def cmd_images(a) -> None:
     from .config import get_settings
@@ -413,6 +449,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("review", help="LLM check of every claim and the hook against their evidence")
     s.add_argument("slug")
     s.set_defaults(func=cmd_review)
+
+    s = sub.add_parser("mascot", help="generate the mascot model sheet and pose library (assets/mascot/)")
+    s.add_argument("--sheet", action="store_true", help="only the model sheet")
+    s.add_argument("--pose", action="append", help="only this pose (repeatable)")
+    s.add_argument("--regenerate", action="store_true", help="generate again even if an accepted image is current")
+    s.add_argument("--attempts", type=int, help="retry budget per image")
+    s.add_argument("--dry-run", action="store_true", help="print the prompts and the AFP estimate; call nothing")
+    s.add_argument("--recut", action="store_true", help="redo the transparent cut-outs from the originals (free)")
+    s.set_defaults(func=cmd_mascot)
 
     s = sub.add_parser("images", help="generate poster images (Seedream) with the OCR label check")
     s.add_argument("slug")

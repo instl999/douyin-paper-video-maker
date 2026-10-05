@@ -45,6 +45,7 @@ pvm render sunk-cost --draft                 # same, but missing images become p
 | M3 Renderer and animatic | Compositor for every scene type; hook, subtitles, source chip, AI label; parallel x264 encode; loudness to −12 LUFS / −1 dBTP; AIGC metadata; animatic; QA | done |
 | M4 Images | Seedream adapter, prompt compiler, per-attempt cache, retry budget with OCR label gate, AFP ledger, review/accept flow | done, verified live |
 | M5 Planner | DeepSeek storyboard drafts (checked, one repair round) and claim review | done, verified live |
+| Mascot | Original science-communication mascot: model sheet and 18 poses in `assets/mascot/` (`pvm mascot`) | done |
 
 ## Live services
 
@@ -56,7 +57,13 @@ One Agent Plan key (`AGENT_PLAN_API_KEY` in `.env`) covers everything. Verified 
   `PVM_LLM_API_KEY` to use DeepSeek's own API instead.
 
 A worked example lives in `projects/demo-social-capital/`: script, reviewed storyboard, voice, poster,
-and final 3:4 and 9:16 renders that pass QA.
+and final 3:4 and 9:16 renders that pass QA. Its poster predates the mascot (style pack v2), so
+`pvm images demo-social-capital` will regenerate it with the mascot reference.
+
+**Subscription:** on 2026-10-02 the API started answering `InvalidSubscription` (the Agent Plan had expired).
+Until the plan is renewed in the Volcano Ark console, `pvm images`, `pvm mascot`, `pvm plan` and `pvm review`
+fail with that message. `pvm voice` in auto mode falls back to free edge-tts for the whole video. Everything
+else (checks, animatic, rendering, QA) runs offline.
 
 ## Tests
 

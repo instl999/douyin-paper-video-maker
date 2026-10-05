@@ -1,3 +1,4 @@
+import json
 import unittest
 
 import numpy as np
@@ -10,7 +11,7 @@ from pvm.render.assets import zoom
 from pvm.render.paper import draw_citation, torn_bottom
 from pvm.render.scenes import split_bands
 from pvm.render.style import layout
-from pvm.render.video import Composer, render
+from pvm.render.video import Composer, render, save_cover
 from pvm.schema import parse_storyboard
 from pvm.timeline import build_timeline
 from pvm.util import PvmError, write_json, write_wav
@@ -70,7 +71,7 @@ STORYBOARD = {
     "hook_claim": {"type": "interpretation", "basis": "a framing question, not a finding"},
     "claims": [{"sentences": [1, 2], "type": "interpretation"}, {"sentences": [3, 3], "type": "advice"}],
     "scenes": [
-        {"id": "t1", "type": "text", "sentences": [1, 1], "lines": ["看不见的盲区"]},
+        {"id": "t1", "type": "text", "sentences": [1, 1], "lines": ["看不见的盲区"], "pose": "think"},
         {"id": "p1", "type": "poster", "sentences": [2, 2], "title": "盲区", "sections": [
             {"heading": "不自知", "visual": "mascot with a blindfold", "labels": ["盲区"]},
             {"heading": "多问一句", "visual": "mascot raising a hand", "labels": ["为什么"]}]},
@@ -107,6 +108,22 @@ class RenderSmokeTest(TempHome):
         write_json(p.audio_dir / "timeline.json", tl.to_json())
         return p, sb, tl
 
+    def test_text_card_shows_the_mascot_pose(self):
+        from pvm.mascot import pose_path
+
+        if not pose_path("think").exists():
+            self.skipTest("mascot poses not generated (pvm mascot)")
+        p, sb, tl = self.make()
+        comp = Composer(p, sb, tl, layout("3x4", animatic=True), animatic=True, strict=False)
+        with_pose = np.asarray(comp.frame(1.0).convert("L"), dtype=int)
+        plain_board = dict(STORYBOARD, scenes=[dict(STORYBOARD["scenes"][0], pose=None)] + STORYBOARD["scenes"][1:])
+        plain = Composer(p, parse_storyboard(plain_board), tl, layout("3x4", animatic=True), animatic=True,
+                         strict=False)
+        without = np.asarray(plain.frame(1.0).convert("L"), dtype=int)
+        lower = slice(int(with_pose.shape[0] * 0.5), int(with_pose.shape[0] * 0.8))  # where the pose stands
+        self.assertGreater(np.abs(with_pose[lower] - without[lower]).mean(), 5)
+        self.assertEqual(comp.ctx.warnings, [])
+
     def test_every_scene_type_draws_a_full_frame(self):
         p, sb, tl = self.make()
         comp = Composer(p, sb, tl, layout("9x16", animatic=True), animatic=True, strict=False)
@@ -133,6 +150,13 @@ class RenderSmokeTest(TempHome):
         self.assertTrue((p.dir / summary["file"]).exists())
         result = run_qa(p, "3x4", "draft")
         self.assertTrue(result["passed"], [c for c in result["checks"] if not c["ok"]])
+
+    def test_cover_carries_the_implicit_aigc_label(self):
+        p, sb, tl = self.make()
+        p.output_dir.mkdir(parents=True, exist_ok=True)
+        info = Image.open(save_cover(p, sb, tl)).info
+        self.assertIn("http://www.tc260.org.cn/ns/AIGC/1.0/", info["XML:com.adobe.xmp"])
+        self.assertEqual(json.loads(info["AIGC"])["Label"], "1")
 
 
 if __name__ == "__main__":
