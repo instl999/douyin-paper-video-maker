@@ -77,12 +77,24 @@ writing a storyboard.
 | `poster` | `title` (≤ 8 characters), `sections` `[{heading, visual, labels, at}]` | 2–4 sections, 3 is the house style. `at` is the sentence where that panel takes focus |
 | `summary` | `title`, `label`, `sections` | Ending. Code draws the citation block |
 | `image` | `title`, `visual` | One full illustration |
-| `text` | `lines` | Emphasis card |
+| `text` | `lines`, `pose` | Emphasis card; `pose` shows a mascot pose under the lines |
 
 `visual` is an English brief for the illustration, at most 60 characters: the mascot, an action, and 2–3 props.
 Describe the scene, not text.
 
 A complete example is in `docs/spec.md` §14.2.
+
+## The mascot
+
+- The design lives in `assets/mascot/mascot.json`; the model sheet and 18 cut-out poses are in `assets/mascot/`
+  (`contact.png` shows them all). Poses: front, wave, point, explain, think, idea, surprised, puzzled, investigate,
+  read, compare, caution, shrug, thumbsup, write, walk, worried, celebrate.
+- Use a pose on a text card with `"pose": "caution"`. Caution suits counterpoints and boundaries; shrug suits
+  "we don't know yet".
+- Every poster prompt passes the model sheet as its reference image, so the character stays the same.
+- Changing `description` or the sheet invalidates every pose (about 19 images, ~1,900 AFP). Change one pose's text
+  to regenerate only that pose: `pvm mascot --pose read`. `pvm mascot --recut` redoes the transparent
+  cut-outs from the kept originals for free.
 
 ## Code conventions
 

@@ -70,6 +70,23 @@ def title_page_index(pdf, title: str, max_pages: int = 3) -> int:
     return 0
 
 
+def highlight_pages(path: Path, highlights: list[str], *, page: int | None, title: str) -> tuple[int, list[str]]:
+    """(1-based page shown, highlight texts that are not on it), without rendering anything."""
+    pdf = _open(path)
+    try:
+        index = page - 1 if page else title_page_index(pdf, title)
+        if not 0 <= index < len(pdf):
+            return index + 1, list(highlights)
+        pg = pdf[index]
+        textpage = pg.get_textpage()
+        raw = textpage.get_text_range()
+        textpage.close()
+        pg.close()
+        return index + 1, [h for h in highlights if not locate(raw, h)]
+    finally:
+        pdf.close()
+
+
 def render_page(path: Path, width_px: int, *, page: int | None, title: str,
                 highlights: list[str] = ()) -> PageImage:
     pdf = _open(path)

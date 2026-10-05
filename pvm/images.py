@@ -46,6 +46,9 @@ def scene_panels(scene) -> list[tuple[str, list[str]]]:
 def compile_prompt(scene, style: dict) -> str:
     panels = scene_panels(scene)
     lines = [f"STYLE: {style['anchor']}.", f"CHARACTER: {style['mascot']}."]
+    if style.get("references"):
+        lines.append("REFERENCE: the attached image shows the mascot; keep its face, hair, hair clip, glasses, "
+                     "clothes and colors exactly the same in every panel.")
     if style.get("avoid"):
         lines.append(f"AVOID: {style['avoid']}.")
     if len(panels) > 1:
@@ -67,12 +70,21 @@ def compile_prompt(scene, style: dict) -> str:
     return "\n".join(lines)
 
 
+MIN_PIXELS = 3_686_400  # Seedream 5.0 lite rejects smaller images (verified 2026-09-28: "at least 3686400 pixels")
+
+
 def request_size(box: tuple[int, int], long_side: int = LONG_SIDE) -> tuple[int, int]:
-    """Pixel size at the aspect ratio of the area the image fills, long side ~2K, multiples of 16."""
+    """Pixel size at the aspect ratio of the area the image fills: long side ~2K, multiples of 16, and never
+    below the model's minimum pixel count."""
     w, h = box
     if w >= h:
-        return long_side, max(512, round(long_side * h / w / 16) * 16)
-    return max(512, round(long_side * w / h / 16) * 16), long_side
+        size = (long_side, max(512, round(long_side * h / w / 16) * 16))
+    else:
+        size = (max(512, round(long_side * w / h / 16) * 16), long_side)
+    if size[0] * size[1] < MIN_PIXELS:
+        k = (MIN_PIXELS / (size[0] * size[1])) ** 0.5
+        size = (-(-int(size[0] * k) // 16) * 16 + 16, -(-int(size[1] * k) // 16) * 16 + 16)
+    return size
 
 
 # ---------------------------------------------------------------- provider adapter (spec §8.1)
@@ -90,9 +102,19 @@ class GeneratedImage:
     meta: dict = field(default_factory=dict)
 
 
-def _data_url(path: Path) -> str:
-    mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
-    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+def _data_url(path: Path, max_side: int = 1280) -> str:
+    """Reference image as a JPEG data URL, downscaled: a full-size PNG would make every request megabytes."""
+    img = Image.open(path)
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGBA")
+        flat = Image.new("RGB", img.size, (255, 255, 255))
+        flat.paste(img, mask=img.getchannel("A"))
+        img = flat
+    img = img.convert("RGB")
+    img.thumbnail((max_side, max_side), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def _json(r: httpx.Response) -> dict:
@@ -176,6 +198,21 @@ def read_text(data: bytes) -> list[tuple[str, float]]:
     return [(str(text), float(score)) for _, text, score in (result or [])]
 
 
+def meaningful_text(found: list[tuple[str, float]]) -> list[str]:
+    """OCR lines that are real text rather than shapes read as glyphs.
+
+    Measured on generated mascot images (2026-09-29): a notebook read as "E" (0.92), a raised hand as "Y" (0.75),
+    fragments like "033" (0.60) or "Clh" (0.52); real model-drawn labels scored 0.998. So a line counts when it has
+    two or more characters at >= 0.75, or one character at >= 0.97.
+    """
+    out = []
+    for text, score in found:
+        chars = sum(1 for ch in text if ch.isalnum())
+        if (chars >= 2 and score >= 0.75) or (chars == 1 and score >= 0.97):
+            out.append(text)
+    return out
+
+
 @dataclass
 class OcrCheck:
     ok: bool
@@ -190,9 +227,10 @@ def check_labels(found: list[tuple[str, float]], labels: list[str], min_score: f
     joined = "".join(cjk_lines)  # a label may wrap onto two lines
     wanted = ["".join(_CJK.findall(label)) for label in labels]
     missing = [label for label, want in zip(labels, wanted) if want and want not in joined]
-    forbidden = [t for t in lines if _LATIN_OR_DIGIT.search(t)]
+    real = meaningful_text(found)  # shapes read as single letters must not fail an image
+    forbidden = [t for t in real if _LATIN_OR_DIGIT.search(t)]
     extra = []
-    for line in cjk_lines:
+    for line in ["".join(_CJK.findall(t)) for t in real]:
         rest = line
         for want in wanted:
             if want:
@@ -284,7 +322,10 @@ def generate_scene(p: Project, scene, *, style: dict, box: tuple[int, int], prov
             break
 
     status = "accepted" if tried[-1]["ok"] else "review"
-    target = out if status == "accepted" else p.visuals_dir / f"{scene.id}.candidate.png"
+    candidate = p.visuals_dir / f"{scene.id}.candidate.png"
+    target = out if status == "accepted" else candidate
+    if status == "accepted":
+        candidate.unlink(missing_ok=True)  # an earlier review is settled
     write_bytes(target, best[1])
     write_json(meta_path, {"scene": scene.id, "status": status, "fingerprint": fingerprint, "prompt": prompt,
                            "size": list(size), "provider": provider.name, "model": provider.model, "labels": labels,

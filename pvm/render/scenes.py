@@ -16,10 +16,10 @@ from ..project import Project
 from ..schema import Paper, PaperScene
 from ..timeline import SceneTiming
 from ..util import PvmError, warn
-from .assets import cover_fit, ease, paper_texture, ramp, rounded_mask, sheet, with_shadow, zoom
+from .assets import contain_fit, cover_fit, ease, paper_texture, ramp, rounded_mask, sheet, with_shadow, zoom
 from .paper import draw_citation, render_page, render_pages, title_region, torn_bottom
 from .style import INK, IVORY, MARKER, MUTED, NAVY, OCHRE, SHEET, Layout
-from .text import fit_lines, text_sprite, wrap
+from .text import fit_lines, paste_rgba, text_sprite, wrap
 
 MARGIN = 36
 FOCUS_EASE = 0.4  # seconds for a panel to lift or settle
@@ -449,17 +449,35 @@ class ImageRenderer(SceneRenderer):
 
 
 class TextRenderer(SceneRenderer):
+    """Emphasis card: large lines, optionally with a mascot pose rising in below them."""
+
     def __init__(self, ctx: Context, scene, timing: SceneTiming):
+        from ..mascot import pose_path  # local import: mascot -> images -> scenes
+
         super().__init__(ctx, scene, timing)
         self.plain = self.background()
+        self.pose = None
+        pose_file = pose_path(scene.pose) if scene.pose else None
+        if pose_file is not None and not pose_file.exists():
+            ctx.warn(f"{scene.id}: mascot pose '{scene.pose}' is not generated yet (pvm mascot); text only")
+            pose_file = None
         f, _ = fit_lines(scene.lines, "black", self.W - 2 * self.s(90), self.s(96), self.s(40))
         sprite = text_sprite(scene.lines, f, INK + (255,), line_spacing=1.25)
+        text_cy = int(self.H * (0.24 if pose_file else 0.42))
         self.base = self.plain.copy()
-        self.base.paste(sprite, ((self.W - sprite.width) // 2, int(self.H * 0.42) - sprite.height // 2), sprite)
+        self.base.paste(sprite, ((self.W - sprite.width) // 2, text_cy - sprite.height // 2), sprite)
+        if pose_file is not None:
+            self.pose = contain_fit(Image.open(pose_file).convert("RGBA"), (int(self.W * 0.62), int(self.H * 0.46)))
+            self.pose_xy = ((self.W - self.pose.width) // 2, int(self.H * PANELS_BOTTOM) - self.pose.height)
 
     def frame(self, t: float) -> Image.Image:
         img = Image.blend(self.plain, self.base, ramp(t, self.timing.start, 0.3))
-        return zoom(img, 1 + 0.03 * ease(self.progress(t)), self.W / 2, self.H * 0.42)
+        if self.pose is not None:
+            k = ramp(t, self.timing.start + 0.15, 0.45)
+            if k > 0:
+                x, y = self.pose_xy
+                paste_rgba(img, self.pose, x, round(y + (1 - k) * self.s(24)), k)
+        return zoom(img, 1 + 0.03 * ease(self.progress(t)), self.W / 2, self.H * 0.45)
 
 
 def generation_box(ctx: Context, scene) -> tuple[int, int]:

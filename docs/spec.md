@@ -427,10 +427,13 @@ Image prompts list the allowed labels explicitly and forbid any other text, incl
 - **Pass:** every requested label is found (after normalization), and no text containing digits or Latin letters appears.
 - **Warning:** extra Chinese text appears.
 - **Fail:** counts against the retry budget (§8.7).
+- **What counts as text:** OCR reads some shapes as single letters, such as an open notebook as "E" (0.92 confidence) or a raised hand as "Y". A detected line therefore counts as text only with two or more characters at ≥ 0.75 confidence, or one character at ≥ 0.97. Real model-drawn labels score about 0.998. Measured on generated images, September 2026.
 
 ### 8.4 Generate for the box
 
 Request each image at the aspect ratio of the area it will fill, which is the three-panel area below the title. Do not request a full frame with instructions like "reserve the top 18%"; models do not follow percentage instructions reliably.
+
+Seedream 5.0 lite rejects images smaller than 3,686,400 pixels (about 1920×1920). Sizes are scaled up to that minimum at the same aspect ratio, in multiples of 16.
 
 ### 8.5 Panel positions
 
@@ -465,6 +468,15 @@ Panel positions are therefore known by construction, so the focus can follow the
 - Generate 20–30 text-free poses once: thinking, pointing, surprised, rejecting, presenting, holding a book, walking, sitting, and so on. Cut them out onto transparent backgrounds and store them in `assets/mascot/`.
 - Posters either composite poses from the library (collage mode), or pass 2–3 poses to the image model as references.
 - Benefits: an identical character in every video, zero quota per video, and a series look that survives model upgrades.
+
+**Implemented (October 2026):**
+
+- `assets/mascot/mascot.json` is the single design source: the description, the avoid list, and 18 poses chosen for science communication. Besides presenting, explaining and investigating, they include caution (for counterpoints) and shrug (for "we don't know yet").
+- `pvm mascot` generates the model sheet first, then each pose with the sheet as its reference image. Each image passes the OCR check for stray text.
+- Poses are cut out onto transparency and the uncut originals are kept. The cut-out treats light, low-saturation pixels connected to the border as background, removes specks, and drops pale detached fragments while keeping colorful ones (confetti, a lightbulb).
+- Props must be tinted and outlined, not plain white, or the cut-out removes them with the background.
+- The style pack passes the model sheet as the reference image for every poster.
+- Text cards can show a pose under their lines (`"pose": "caution"`).
 
 ### 9.2 Style pack
 
@@ -600,6 +612,9 @@ The per-video manifest records estimated AFP, actual AFP, image calls, retries, 
 - The *Measures for Labeling AI-Generated Synthetic Content* (CAC and others, in force since September 1, 2025) and the mandatory national standard GB 45438-2025 require explicit and implicit labels on AI-generated content. This project's images and voice are AI-generated.
 - **Explicit label:** a visible label in the video (default "含AI生成内容", configurable), plus Douyin's AI-content declaration at upload.
 - **Implicit label:** the pipeline writes an AIGC metadata record into the MP4. Pillow compositing and FFmpeg re-encoding drop any metadata label carried by the provider's images, so the pipeline must write its own.
+  - **Video:** the MP4 metadata field `AIGC` holds `{"Label": "1", "ContentProducer": …, "ProduceID": …, "ReservedCode1": "", "ContentPropagator": "", "PropagateID": "", "ReservedCode2": ""}`. These are the GB 45438-2025 field names, checked against published implementations in September 2026. `Label` "1" marks the content as AI-generated.
+  - **Cover image:** the published cover PNG carries the same record as XMP in the TC260 namespace (`http://www.tc260.org.cn/ns/AIGC/1.0/`).
+  - **Producer:** `PVM_AIGC_PRODUCER` sets `ContentProducer` to the channel or company name.
 - Never remove or obscure labels added by a provider. If the provider's visible watermark is turned off, the video's own label must cover that obligation.
 - Verify the exact label wording, placement and metadata fields against the current official texts (§13.8).
 

@@ -74,6 +74,7 @@ class Settings:
     bgm: str
     allow_system_fonts: bool
     ai_label: str  # visible AI-content label; "none" disables it (see spec §13.2 before doing that)
+    aigc_producer: str  # ContentProducer in the implicit AIGC label: the channel or company publishing
 
     @property
     def tier_limits(self) -> dict[str, int]:
@@ -149,4 +150,5 @@ def get_settings() -> Settings:
         bgm=get("PVM_BGM", "none"),
         allow_system_fonts=get("PVM_ALLOW_SYSTEM_FONTS", "0").lower() in ("1", "true", "yes"),
         ai_label=get("PVM_AI_LABEL", "含AI生成内容"),
+        aigc_producer=get("PVM_AIGC_PRODUCER", "pvm"),
     )

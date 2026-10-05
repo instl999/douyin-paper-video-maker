@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from PIL import Image
+
 from pvm import util
 from pvm.project import Project
 from pvm.util import PvmError, write_json
@@ -37,6 +39,19 @@ class ProjectCheckTest(TempHome):
             p.storyboard()
         self.assertIn("script.txt changed", str(ctx.exception))
         self.assertEqual(p.check(ignore_anchor=True).errors, [])
+
+    def test_asset_checks_flag_missing_highlights_and_unknown_poses(self):
+        p = self.make()
+        p.sources_dir.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (612, 792), "white").save(p.source_pdf())  # a real PDF; highlight_pages is mocked
+        data = board()
+        data["scenes"][1] = {"id": "t1", "type": "text", "sentences": [4, 6], "lines": ["你呢"], "pose": "moonwalk"}
+        write_json(p.storyboard_path, data)
+        with mock.patch("pvm.render.paper.highlight_pages", return_value=(1, ["overestimated"])):
+            report = p.check()
+        self.assertTrue(any("highlight 'overestimated' is not on page 1" in w for w in report.warnings),
+                        report.warnings)
+        self.assertTrue(any("unknown mascot pose 'moonwalk'" in e for e in report.errors), report.errors)
 
     def test_legacy_single_paper_becomes_src1(self):
         p, _ = Project.open_or_create("legacy")

@@ -169,7 +169,31 @@ class Project:
         papers = self.sources()
         errors, warnings = check_storyboard(sb, texts, set(papers), ignore_anchor=ignore_anchor)
         ev_errors, ev_warnings, results = check_evidence(sb, self.source_texts(), papers, strict=strict)
-        return CheckReport(sb, errors + ev_errors, warnings + ev_warnings, results, sentences_hash(texts))
+        asset_errors, asset_warnings = self._check_assets(sb, papers)
+        return CheckReport(sb, errors + ev_errors + asset_errors, warnings + ev_warnings + asset_warnings, results,
+                           sentences_hash(texts))
+
+    def _check_assets(self, sb: Storyboard, papers: dict[str, Paper]) -> tuple[list[str], list[str]]:
+        """Highlights must be on the page that will be shown; mascot poses must exist."""
+        from .mascot import pose_names, pose_path
+        from .render.paper import highlight_pages
+
+        errors: list[str] = []
+        warnings: list[str] = []
+        for sc in sb.scenes:
+            if sc.type == "paper" and sc.highlights and self.source_pdf(sc.paper).exists():
+                paper = papers.get(sc.paper)
+                page, missing = highlight_pages(self.source_pdf(sc.paper), [h.text for h in sc.highlights],
+                                                page=sc.page, title=paper.title if paper else "")
+                for text in missing:
+                    warnings.append(f"{sc.id}: highlight '{text}' is not on page {page} of {sc.paper}, so it will "
+                                    "not be shown; copy the phrase from  pvm source --find")
+            if sc.type == "text" and sc.pose:
+                if sc.pose not in pose_names():
+                    errors.append(f"{sc.id}: unknown mascot pose '{sc.pose}'; poses: {', '.join(pose_names())}")
+                elif not pose_path(sc.pose).exists():
+                    warnings.append(f"{sc.id}: pose '{sc.pose}' has not been generated yet (pvm mascot)")
+        return errors, warnings
 
     def storyboard(self, check: bool = True, strict: bool = False) -> Storyboard:
         if not check:

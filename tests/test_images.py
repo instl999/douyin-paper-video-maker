@@ -40,7 +40,11 @@ class PromptTest(unittest.TestCase):
 
     def test_request_size_follows_the_panel_area(self):
         self.assertEqual(request_size((1000, 960)), (2048, 1968))
-        self.assertEqual(request_size((1000, 2000)), (1024, 2048))
+        for box in ((1000, 2000), (1000, 700), (1000, 300)):
+            w, h = request_size(box)
+            self.assertGreaterEqual(w * h, images.MIN_PIXELS, box)  # the model rejects smaller images
+            self.assertEqual((w % 16, h % 16), (0, 0))
+            self.assertAlmostEqual(w / h, box[0] / box[1], delta=0.03)
 
 
 class LabelCheckTest(unittest.TestCase):
@@ -53,6 +57,13 @@ class LabelCheckTest(unittest.TestCase):
         self.assertFalse(check.ok)
         self.assertEqual(check.missing, ["高收入朋友"])
         self.assertEqual(check.forbidden, ["20%", "Nature"])
+
+    def test_shapes_read_as_single_letters_do_not_fail_an_image(self):
+        # measured false positives on generated images: a notebook as "E" (0.92), fragments like "033" (0.60)
+        found = [("不同背景", 0.998), ("E", 0.921), ("Y", 0.749), ("033", 0.595), ("Clh", 0.524)]
+        self.assertTrue(check_labels(found, ["不同背景"]).ok)
+        self.assertEqual(images.meaningful_text(found), ["不同背景"])
+        self.assertFalse(check_labels([("不同背景", 0.99), ("AI", 0.9)], ["不同背景"]).ok)  # real letters still fail
 
     def test_low_confidence_noise_is_ignored_and_extra_text_only_warns(self):
         check = check_labels([("不同背景", 0.99), ("x", 0.3), ("意外文字", 0.97)], ["不同背景"])
