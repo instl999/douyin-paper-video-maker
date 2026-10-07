@@ -17,30 +17,26 @@ class SettingsTest(unittest.TestCase):
         finally:
             config.get_settings.cache_clear()
 
-    def test_agent_plan_key_never_covers_the_planner(self):
-        # the plan's terms forbid API calls to its text models (risk of suspension or a ban)
+    def test_agent_plan_key_covers_the_planner_with_v41_flash(self):
         s = self.settings({"AGENT_PLAN_API_KEY": "plan-key"})
-        self.assertEqual(s.api_key, "plan-key")
+        self.assertEqual((s.llm_api_key, s.llm_base_url, s.llm_model),
+                         ("plan-key", config.AGENT_PLAN_BASE_URL, "deepseek-v4.1-flash"))
+        llm = make_llm(s)
+        self.assertEqual((llm.model, llm.rates), ("deepseek-v4.1-flash", (2.5, 2.5)))  # billed in AFP on the plan
+        self.assertEqual(self.settings({"AGENT_PLAN_API_KEY": "k", "PVM_LLM_MODEL": "deepseek-v4-pro"}).llm_model,
+                         "deepseek-v4-pro")
+
+    def test_own_deepseek_key_wins(self):
+        s = self.settings({"AGENT_PLAN_API_KEY": "plan-key", "PVM_LLM_API_KEY": "ds-key"})
+        self.assertEqual((s.llm_api_key, s.llm_base_url, s.llm_model), ("ds-key", "https://api.deepseek.com", "deepseek-chat"))
+        self.assertIsNone(make_llm(s).rates)  # DeepSeek bills its own account, not the plan's AFP
+
+    def test_no_keys_means_no_llm(self):
+        s = self.settings({})
         self.assertIsNone(s.llm_api_key)
         with self.assertRaises(PvmError) as ctx:
             make_llm(s)
-        self.assertIn("PVM_LLM_API_KEY", str(ctx.exception))
-
-    def test_own_deepseek_key(self):
-        s = self.settings({"AGENT_PLAN_API_KEY": "plan-key", "PVM_LLM_API_KEY": "ds-key"})
-        self.assertEqual((s.llm_api_key, s.llm_base_url, s.llm_model), ("ds-key", "https://api.deepseek.com", "deepseek-chat"))
-        self.assertEqual(make_llm(s).model, "deepseek-chat")
-
-    def test_plan_endpoints_and_the_plan_key_are_refused(self):
-        for env in ({"PVM_LLM_API_KEY": "k", "PVM_LLM_BASE_URL": config.AGENT_PLAN_BASE_URL},
-                    {"PVM_LLM_API_KEY": "k", "PVM_LLM_BASE_URL": "https://ark.cn-beijing.volces.com/api/coding/v3"},
-                    {"AGENT_PLAN_API_KEY": "plan-key", "PVM_LLM_API_KEY": "plan-key",
-                     "PVM_LLM_BASE_URL": "https://ark.cn-beijing.volces.com/api/v3"}):
-            with self.assertRaises(PvmError, msg=env) as ctx:
-                make_llm(self.settings(env))
-            self.assertIn("terms", str(ctx.exception))
-        pay_as_you_go = self.settings({"PVM_LLM_API_KEY": "ark-key", "PVM_LLM_BASE_URL": "https://ark.cn-beijing.volces.com/api/v3"})
-        self.assertEqual(make_llm(pay_as_you_go).base_url, "https://ark.cn-beijing.volces.com/api/v3")
+        self.assertIn("AGENT_PLAN_API_KEY", str(ctx.exception))
 
     def test_image_model_default_and_price_override(self):
         s = self.settings({})
