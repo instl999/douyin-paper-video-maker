@@ -17,7 +17,7 @@ Checked against the Agent Plan documentation (updated September 29, 2026) and li
 | Area | v1.1 | v1.2 | Why |
 |---|---|---|---|
 | Image model | Seedream 5.0 lite, 99 AFP per image, at least 3.69 MP | Seedream 5.0 pro at up to 2.61 MP ("1.5K"), 150 AFP per image | 5.0 lite now answers `UnsupportedModel` on the plan. Above 2.61 MP, 5.0 pro costs 300 AFP (§8.4, §12) |
-| LLM | DeepSeek V4 Pro through the Agent Plan by default | A key of its own (DeepSeek, or Ark pay-as-you-go); never the Agent Plan | The plan's terms forbid API calls to its text models, at the risk of suspension or a ban (§7.3) |
+| LLM | DeepSeek V4 Pro (beta) through the Agent Plan | DeepSeek V4.1 Flash through the Agent Plan, billed in AFP; a key of its own takes precedence | The operator's choice. V4.1 Flash costs less than half of V4 Pro per token and answered the review in 17 s instead of 48. The plan's terms reserve text models for AI tools, a risk the operator accepted (§7.3) |
 | Quota cycle | Calendar month | The plan's month, which starts on the day of purchase (`PVM_PLAN_START`) | The monthly quota resets on that day (§8.6) |
 | Voice cost | "May consume AFP; measure it" | 1,350 AFP per 10,000 characters, recorded in the ledger | Plan AFP rules (§10.2) |
 | Asset fingerprints | Prompt and pixel size | Prompt and the shape of the area | A cheaper size on a new model must not invalidate accepted images (§8.7) |
@@ -242,7 +242,7 @@ The central boundary is unchanged:
 | Interface | `pvm` command-line tool, plus a coding agent that follows `AGENTS.md` | Web console |
 | Orchestration | Stage stamps (input hashes) in `project.json`; content-hash caches | Job queue, workflow engine |
 | Storage | One folder per video under `projects/` | Database, object storage |
-| LLM | DeepSeek with JSON output, with a key of its own (DeepSeek's API, or Ark pay-as-you-go). Never the Agent Plan (§7.3) | — |
+| LLM | DeepSeek with JSON output: `deepseek-v4.1-flash` through the Agent Plan by default, or a key of its own (§7.3) | — |
 | Images | Seedream 5.0 pro through Agent Plan, behind an adapter | Fallback providers |
 | Voice | Ark TTS (Agent Plan) for final renders; edge-tts (free) for drafts and animatics | — |
 | Timing | TTS word timestamps; `jieba` word boundaries as a fallback | Forced alignment, only for human voiceover |
@@ -411,7 +411,11 @@ The image prompt compiler is deterministic code, not an LLM (§15.2).
 
 ### 7.3 Key and terms
 
-The LLM needs a key of its own: DeepSeek's API by default, or Ark pay-as-you-go. The Agent Plan includes DeepSeek and other text models, but its terms say they must not be used through API calls, only inside supported AI tools. Using the plan's base URL and key elsewhere may be treated as abuse and lead to suspension or a ban (plan overview, updated September 29, 2026). pvm therefore refuses plan endpoints and the plan key for `pvm plan` and `pvm review`. Without an LLM key, a coding agent following `AGENTS.md` writes the storyboard, and `pvm check` still verifies every excerpt. Images and voice are not affected; the plan offers them for API use.
+- **Default:** `deepseek-v4.1-flash` through the Agent Plan, with the plan key. Each call costs (input tokens × 2.5 + output tokens × 2.5) ÷ 10,000 AFP, and is recorded in the AFP ledger, including attempts that come back empty. The price is halved until October 30, 2026, which the ledger ignores. Measured on the six-sentence demo: a draft that passed every check in one round took 40 s and 4 AFP, and a review 17 s and 1 AFP. The model reasons before answering (7,968 of the draft's 8,717 output tokens), so the output cap is 32,000 tokens; a truncated reply would still be billed.
+- **Alternative:** `PVM_LLM_API_KEY` with DeepSeek's own API (`deepseek-chat`) or Ark pay-as-you-go. It takes precedence and keeps text calls off the plan.
+- **Terms:** the plan's overview (updated September 29, 2026) says its text models are for supported AI tools rather than API calls, and that using the plan's base URL and key elsewhere may be treated as abuse and lead to suspension or a ban. On October 7, 2026 the operator chose to run `pvm plan` and `pvm review` on the plan anyway. Keep the volume to what a person would do in a tool: one draft and one review per storyboard. If the plan objects, set `PVM_LLM_API_KEY`.
+- Images and voice are offered by the plan for API use, so the terms concern only text.
+- Without any key, a coding agent following `AGENTS.md` writes the storyboard, and `pvm check` still verifies every excerpt.
 
 ---
 
@@ -467,7 +471,7 @@ Panel positions are therefore known by construction, so the focus can follow the
 
 - Daily allowance = (monthly budget − used this cycle) ÷ days left in the cycle, capped by the plan's daily limit.
 - The cycle is the plan's month. It starts on the day of purchase, and the monthly quota resets on that day each month, so `PVM_PLAN_START` holds the purchase date. Without it, pvm falls back to the calendar month. Image models also have a daily limit of half the monthly quota, reset at midnight; image, voice and video models have no 5-hour or weekly limits.
-- Every paid call is written to a ledger (`cache/afp_ledger.jsonl`): images, mascot images and newly synthesized voice.
+- Every paid call is written to a ledger (`cache/afp_ledger.jsonl`): images, mascot images, newly synthesized voice, and text calls on the plan.
 - Thresholds by remaining budget: above 30%, normal operation; 10–30%, one candidate per poster; below 10%, approved jobs only.
 - Never assume the plan continues seamlessly after quota exhaustion. Defer, reuse cached assets, or switch to a configured fallback provider.
 
@@ -598,7 +602,7 @@ image_AFP = posters × attempts_per_poster × AFP_per_image
 | Quality | 5 posters × 2 candidates, plus the summary card | ~12 | ~1,800 |
 | Per-panel | 15 panels × 1.3 attempts | ~20 | ~3,000 |
 
-Voice adds about 80 AFP for a two-minute script (§10.2), so a Standard video costs about 1,200 AFP.
+Voice adds about 80 AFP for a two-minute script (§10.2), and a storyboard draft plus a review on `deepseek-v4.1-flash` a few AFP more (§7.3), so a Standard video costs about 1,200 AFP.
 
 A one-time cost: the mascot library (model sheet and 18 poses) was generated in September 2026 for about 2,475 AFP on 5.0 lite. Regenerating all of it at today's price would cost about 2,850 AFP plus retries; schedule that at the start of a plan month.
 

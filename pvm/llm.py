@@ -2,12 +2,25 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 
 import httpx
 
+from . import quota
 from .config import Settings
 from .util import PvmError
+
+PLAN_ENDPOINTS = ("/api/plan/", "/api/coding/")  # Volcano's subscription plans, which bill text in AFP
+
+# AFP per 10,000 tokens (input, output) on the Agent Plan (docs, 2026-09-29). List prices: deepseek-v4.1-flash is at
+# half price until 2026-10-30, so the ledger overstates it until then. Unlisted models count at the highest text rate.
+PLAN_TEXT_RATES = {
+    "deepseek-v4.1-flash": (2.5, 2.5),
+    "deepseek-v4-flash": (0.5, 0.5),
+    "deepseek-v4-pro": (5.5, 5.5),
+}
+UNLISTED_TEXT_RATE = (10.0, 10.0)
 
 
 @dataclass
@@ -21,6 +34,16 @@ class LLM:
     def __init__(self, base_url: str, api_key: str, model: str, *, transport: httpx.BaseTransport | None = None):
         self.base_url, self.api_key, self.model = base_url.rstrip("/"), api_key, model
         self.transport = transport  # tests pass an httpx.MockTransport
+        on_plan = any(part in self.base_url + "/" for part in PLAN_ENDPOINTS)
+        self.rates = PLAN_TEXT_RATES.get(model.removesuffix("-beta"), UNLISTED_TEXT_RATE) if on_plan else None
+
+    def _record(self, usage: dict) -> None:
+        """Every answered call on the plan costs AFP, failed attempts included."""
+        if not self.rates or not usage:
+            return
+        tokens_in, tokens_out = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+        afp = (tokens_in * self.rates[0] + tokens_out * self.rates[1]) / 10_000
+        quota.record(math.ceil(afp), kind="text", model=self.model, note=f"{tokens_in} in, {tokens_out} out")
 
     def json(self, system: str, user: str, *, temperature: float = 0.3, max_tokens: int = 8000,
              tries: int = 3) -> LlmReply:
@@ -43,6 +66,7 @@ class LLM:
                 if r.status_code != 200:
                     raise PvmError(f"LLM HTTP {r.status_code}: {r.text[:300]}")
                 payload = r.json()
+                self._record(payload.get("usage") or {})
                 content = ((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
                 if not content.strip():
                     problem = "empty response"  # JSON mode occasionally returns nothing; asking again helps
@@ -58,19 +82,9 @@ class LLM:
         raise PvmError(f"LLM failed after {tries} tries: {problem}")
 
 
-PLAN_ENDPOINTS = ("/api/plan/", "/api/coding/")  # Volcano's subscription plans: their text models are for AI tools only
-
-
 def make_llm(settings: Settings) -> LLM:
-    # The Agent/Coding Plan terms (docs, 2026-09-29): its text models must not be used through API calls, and doing so
-    # risks suspension of the subscription or a ban. pvm's plan and review are API calls, so they need their own key.
-    if any(part in settings.llm_base_url + "/" for part in PLAN_ENDPOINTS) or (
-            settings.llm_api_key and settings.llm_api_key == settings.api_key):
-        raise PvmError("pvm plan and pvm review cannot use the Agent Plan: its terms forbid API calls to its text "
-                       "models (risk of suspension or a ban). Set PVM_LLM_API_KEY to a DeepSeek key, or point "
-                       "PVM_LLM_BASE_URL at Ark pay-as-you-go with a key of its own")
     if not settings.llm_api_key:
-        raise PvmError("pvm plan and pvm review need PVM_LLM_API_KEY (a DeepSeek key by default; the Agent Plan key "
-                       "does not cover text models). Without one, write the storyboard by hand or with a coding agent "
-                       "(AGENTS.md); pvm check still verifies every excerpt")
+        raise PvmError("pvm plan and pvm review need an LLM key: AGENT_PLAN_API_KEY (deepseek-v4.1-flash on the plan) "
+                       "or PVM_LLM_API_KEY (DeepSeek's API). Without one, write the storyboard by hand or with a "
+                       "coding agent (AGENTS.md); pvm check still verifies every excerpt")
     return LLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model)

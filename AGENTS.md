@@ -23,8 +23,9 @@ writing a storyboard.
    source text to quote.
 5. Write `projects/<project>/storyboard.json` (format below), or draft it with `pvm plan <project> --auto` and then
    read and correct the draft. `pvm review <project>` asks the LLM to check every claim and the hook for overreach.
-   Both need `PVM_LLM_API_KEY` (DeepSeek or Ark pay-as-you-go). Never route them through the Agent Plan: its terms
-   forbid API calls to its text models, and the account could be suspended or banned.
+   Both run on `deepseek-v4.1-flash` through the Agent Plan unless `PVM_LLM_API_KEY` is set, and each call is
+   billed in AFP. The plan's terms reserve its text models for AI tools rather than API calls; the operator
+   accepted that risk (spec §7.3). Draft once and review once per storyboard rather than looping on them.
 6. Run `pvm check <project>` until it prints `ok`. Before a final render, `pvm check <project> --strict` must pass too.
 7. `pvm voice <project>` builds the narration and timeline; `pvm animatic <project>` renders the zero-quota preview
    for checkpoint 2.

@@ -16,7 +16,7 @@ from .util import PvmError, now_iso, stable_hash, write_json
 PLAN_VERSION = 1
 REVIEW_VERSION = 1
 SOURCE_CHARS = 24_000  # abstract plus the start of the full text; enough for the claims a video makes
-PLAN_TOKENS = 16_000  # reasoning models count their thinking against max_tokens
+PLAN_TOKENS = 32_000  # reasoning counts against max_tokens: v4.1-flash spent 7,968 of 8,717 on a 6-sentence draft
 
 EXAMPLE = {
     "version": 2, "title": "<internal title>", "hook": ["<2-7字>", "<2-7字>"], "hook_until": 3,

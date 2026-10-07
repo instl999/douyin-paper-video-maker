@@ -108,10 +108,17 @@ def get_settings() -> Settings:
             api_key, api_key_var = get(var), var
             break
 
-    # LLM: always a key of its own (DeepSeek by default, or Ark pay-as-you-go). The Agent Plan key is for images and
-    # voice only: the plan's terms forbid API calls to its text models, at the risk of suspension or a ban (docs,
-    # 2026-09-29), so it never falls back to the plan.
+    # LLM: a key of its own wins (DeepSeek's API, or Ark pay-as-you-go). Otherwise the Agent Plan key covers it with
+    # deepseek-v4.1-flash. The plan's terms reserve its text models for AI tools rather than API calls (docs,
+    # 2026-09-29: risk of suspension or a ban); the operator chose to accept that on 2026-10-07. Setting
+    # PVM_LLM_API_KEY keeps text calls off the plan.
     ark_base = get("PVM_ARK_BASE_URL", AGENT_PLAN_BASE_URL).rstrip("/")
+    llm_key = get("PVM_LLM_API_KEY") or None
+    if llm_key or not api_key:
+        llm_base, llm_model = get("PVM_LLM_BASE_URL", "https://api.deepseek.com"), get("PVM_LLM_MODEL", "deepseek-chat")
+    else:
+        llm_key = api_key
+        llm_base, llm_model = get("PVM_LLM_BASE_URL", ark_base), get("PVM_LLM_MODEL", "deepseek-v4.1-flash")
 
     tier = get("PVM_PLAN_TIER", "small").lower()
     monthly_default = PLAN_TIERS.get(tier, PLAN_TIERS["small"])["monthly"]
@@ -139,9 +146,9 @@ def get_settings() -> Settings:
         contact_email=get("PVM_CONTACT_EMAIL") or None,
         s2_api_key=get("SEMANTIC_SCHOLAR_API_KEY") or None,
         openalex_api_key=get("OPENALEX_API_KEY") or None,
-        llm_base_url=get("PVM_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-        llm_api_key=get("PVM_LLM_API_KEY") or None,
-        llm_model=get("PVM_LLM_MODEL", "deepseek-chat"),
+        llm_base_url=llm_base.rstrip("/"),
+        llm_api_key=llm_key,
+        llm_model=llm_model,
         style=get("PVM_STYLE", "paper-cut"),
         x264_preset=get("PVM_X264_PRESET", "veryfast"),
         crf=get_int("PVM_CRF", 20),

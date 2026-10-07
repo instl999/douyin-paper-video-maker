@@ -4,6 +4,7 @@ import unittest
 
 import httpx
 
+from pvm import quota
 from pvm.llm import LLM, LlmReply
 from pvm.planner import PLAN_SYSTEM, plan, review, unsupported
 from pvm.project import Project
@@ -36,6 +37,26 @@ class LlmClientTest(unittest.TestCase):
         with self.assertRaises(PvmError) as ctx:
             LLM("https://api.example.com", "k", "m", transport=transport).json("s", "u")
         self.assertIn("401", str(ctx.exception))
+
+
+class PlanTextSpendTest(TempHome):
+    def test_plan_calls_are_billed_by_tokens_including_failed_attempts(self):
+        replies = iter(["", json.dumps({"ok": True})])  # the first attempt comes back empty and is still billed
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"choices": [{"message": {"content": next(replies)}}],
+                                             "usage": {"prompt_tokens": 12_000, "completion_tokens": 3_000}})
+
+        llm = LLM("https://ark.cn-beijing.volces.com/api/plan/v3", "k", "deepseek-v4.1-flash",
+                  transport=httpx.MockTransport(handler))
+        llm.json("s", "u")
+        # (12,000 + 3,000) tokens x 2.5 AFP per 10,000 = 3.75, rounded up per call
+        self.assertEqual([(e["kind"], e["afp"]) for e in quota.entries()], [("text", 4), ("text", 4)])
+
+    def test_other_endpoints_cost_no_afp(self):
+        transport = httpx.MockTransport(lambda r: httpx.Response(200, json=completion(json.dumps({"ok": True}))))
+        LLM("https://api.deepseek.com", "k", "deepseek-chat", transport=transport).json("s", "u")
+        self.assertEqual(quota.entries(), [])
 
 
 class FakeLLM:
