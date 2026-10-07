@@ -15,15 +15,16 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import quota
 from .config import Settings, get_settings
-from .images import _LOCK, ImageRequest, _spend_check, _to_png, make_provider, meaningful_text, read_text
+from .images import (_LOCK, ImageRequest, _spend_check, _to_png, image_cost, image_model, make_provider,
+                     meaningful_text, read_text, request_size)
 from .render.style import IVORY
 from .util import ROOT, PvmError, data_dir, read_json, sha256_file, stable_hash, write_bytes, write_json
 
 MASCOT_DIR = ROOT / "assets" / "mascot"
-SHEET_SIZE = (2560, 1440)  # 16:9 at the model's 3,686,400-pixel minimum
-POSE_SIZE = (1664, 2224)  # ~3:4 portrait, just above the minimum
+SHEET_SHAPE = (16, 9)  # the pixel size follows the image model (images.request_size)
+POSE_SHAPE = (3, 4)
 POSE_MAX_HEIGHT = 1400  # stored cut-outs; plenty for a 1080-px frame
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: fingerprints record the shape, not the pixel size
 
 
 def load_design(path: Path | None = None) -> dict:
@@ -238,29 +239,34 @@ def recut_poses() -> list[str]:
     return names
 
 
-def _generate(name: str, prompt: str, size: tuple[int, int], refs: list[Path], *, provider, settings: Settings,
+def fingerprint(prompt: str, shape: tuple[int, int], refs: list[Path], cut: bool) -> str:
+    return stable_hash({"prompt": prompt, "shape": list(shape), "refs": [sha256_file(r) for r in refs], "cut": cut,
+                        "v": PROMPT_VERSION})[:16]
+
+
+def _generate(name: str, prompt: str, shape: tuple[int, int], refs: list[Path], *, provider, settings: Settings,
               attempts: int, regenerate: bool, dry_run: bool, target: Path, cut: bool) -> MascotResult:
-    fingerprint = stable_hash({"prompt": prompt, "size": list(size), "refs": [sha256_file(r) for r in refs],
-                               "cut": cut, "v": PROMPT_VERSION})[:16]
+    size = request_size(shape, image_model(settings.image_model))
+    cost = image_cost(settings, size, len(refs))
+    fp = fingerprint(prompt, shape, refs, cut)
     meta_path = target.with_suffix(".json")
     meta = read_json(meta_path) or {}
-    if not regenerate and target.exists() and meta.get("fingerprint") == fingerprint and meta.get("status") == "accepted":
+    if not regenerate and target.exists() and meta.get("fingerprint") == fp and meta.get("status") == "accepted":
         return MascotResult(name, "up-to-date", 0, meta.get("attempts", []), prompt)
     if dry_run:
-        return MascotResult(name, "dry-run", settings.afp_per_image, [], prompt)
+        return MascotResult(name, "dry-run", cost, [], prompt)
     tried, spent, best = [], 0, None
     for attempt in range(1, attempts + 1):
-        cached = data_dir("cache") / "images" / f"{_cache_key(fingerprint, provider.model, attempt)}.png"
+        cached = data_dir("cache") / "images" / f"{_cache_key(fp, provider.model, attempt)}.png"
         if cached.exists():
             data, source = cached.read_bytes(), "cache"
         else:
             with _LOCK:
-                _spend_check(settings)
+                _spend_check(cost)
             generated = provider.generate(ImageRequest(prompt, size, refs))
-            spent += settings.afp_per_image
+            spent += cost
             with _LOCK:
-                quota.record(settings.afp_per_image, kind="mascot", model=provider.model,
-                             note=f"{name} attempt {attempt}")
+                quota.record(cost, kind="mascot", model=provider.model, note=f"{name} attempt {attempt}")
             data, source = _to_png(generated.data), "generated"
             write_bytes(cached, data)
         text = meaningful_text(read_text(data))
@@ -287,7 +293,7 @@ def _generate(name: str, prompt: str, size: tuple[int, int], refs: list[Path], *
     buf = io.BytesIO()
     best[1].save(buf, "PNG", optimize=True)
     write_bytes(out, buf.getvalue())
-    write_json(meta_path, {"name": name, "status": status, "fingerprint": fingerprint, "prompt": prompt,
+    write_json(meta_path, {"name": name, "status": status, "fingerprint": fp, "prompt": prompt,
                            "size": list(size), "model": provider.model, "attempts": tried,
                            "afp": spent + (0 if regenerate else meta.get("afp", 0))})
     return MascotResult(name, status, spent, tried, prompt)
@@ -304,18 +310,19 @@ def run_mascot(*, poses: list[str] | None = None, sheet_only: bool = False, rege
         provider = make_provider(settings)
     budget = attempts or settings.image_attempts
     sheet = MASCOT_DIR / "sheet.png"
-    results = [_generate("sheet", sheet_prompt(design), SHEET_SIZE, [], provider=provider, settings=settings,
+    results = [_generate("sheet", sheet_prompt(design), SHEET_SHAPE, [], provider=provider, settings=settings,
                          attempts=budget, regenerate=regenerate and (sheet_only or not poses), dry_run=dry_run,
                          target=sheet, cut=False)]
     if sheet_only:
         return results
     if not sheet.exists():
         if dry_run:  # poses need the sheet as their reference; estimate them anyway
-            return results + [MascotResult(n, "dry-run", settings.afp_per_image, [], pose_prompt(design, n))
+            cost = image_cost(settings, request_size(POSE_SHAPE, image_model(settings.image_model)), 1)
+            return results + [MascotResult(n, "dry-run", cost, [], pose_prompt(design, n))
                               for n in poses or design["poses"]]
         raise PvmError("the model sheet is not accepted yet; review assets/mascot/sheet.candidate.png")
     def one(name: str) -> MascotResult:
-        return _generate(name, pose_prompt(design, name), POSE_SIZE, [sheet], provider=provider, settings=settings,
+        return _generate(name, pose_prompt(design, name), POSE_SHAPE, [sheet], provider=provider, settings=settings,
                          attempts=budget, regenerate=regenerate, dry_run=dry_run, target=pose_path(name), cut=True)
 
     with ThreadPoolExecutor(max_workers=max(1, getattr(settings, "image_concurrency", 1))) as pool:

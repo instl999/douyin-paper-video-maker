@@ -1,12 +1,14 @@
 import unittest
+from unittest import mock
 
 import numpy as np
 
+from pvm import quota
 from pvm.schema import parse_storyboard
 from pvm.timeline import build_cues, build_timeline, char_time, srt
-from pvm.tts import Word, _ark_words, ark_resource_id
+from pvm.tts import ArkEngine, Clip, Word, _ark_words, ark_resource_id, synthesize
 from pvm.voice import SentenceAudio, VoiceTrack, align_words, trim_silence
-from tests.helpers import board
+from tests.helpers import TempHome, board
 
 TEXTS = ["你有没有发现，有些人明明不懂，却特别自信？", "两位心理学家在期刊上发表了一项研究。",
          "他们发现，测试得分最低的人高估了自己的表现。", "问题不在于不懂，而在于不知道自己不懂。",
@@ -64,6 +66,15 @@ class VoiceTest(unittest.TestCase):
         self.assertEqual([(w.text, w.start) for w in _ark_words(msg)], [("你", 0.05), ("好", 0.18)])  # ms -> s
         long = {"sentence": {"words": [{"word": "长", "startTime": 1000, "endTime": 125000}]}}
         self.assertAlmostEqual(_ark_words(long)[0].end, 125.0)  # milliseconds are detected
+
+
+class ArkVoiceSpendTest(TempHome):
+    def test_new_sentences_are_billed_by_characters_and_cached_ones_are_free(self):
+        engine = ArkEngine("https://tts.example", "k", "zh_male_jieshuoxiaoming_uranus_bigtts", 10)
+        with mock.patch.object(engine, "synthesize_many", side_effect=lambda texts: [Clip(b"mp3") for _ in texts]):
+            synthesize(engine, TEXTS[:2])  # 21 + 18 characters
+            synthesize(engine, TEXTS[:3])  # only the third (22 characters) is new
+        self.assertEqual([(e["kind"], e["afp"]) for e in quota.entries()], [("voice", 6), ("voice", 3)])  # 1,350 / 10k
 
 
 class TimelineTest(unittest.TestCase):

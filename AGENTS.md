@@ -1,7 +1,7 @@
 # AGENTS.md
 
 A guide for coding agents, and for people, working in this repository. The product spec is
-[`docs/spec.md`](docs/spec.md) (v1.1). Read §6 (sources and evidence) and §8.2 (who draws what) before
+[`docs/spec.md`](docs/spec.md) (v1.2). Read §6 (sources and evidence) and §8.2 (who draws what) before
 writing a storyboard.
 
 ## Environment
@@ -23,6 +23,8 @@ writing a storyboard.
    source text to quote.
 5. Write `projects/<project>/storyboard.json` (format below), or draft it with `pvm plan <project> --auto` and then
    read and correct the draft. `pvm review <project>` asks the LLM to check every claim and the hook for overreach.
+   Both need `PVM_LLM_API_KEY` (DeepSeek or Ark pay-as-you-go). Never route them through the Agent Plan: its terms
+   forbid API calls to its text models, and the account could be suspended or banned.
 6. Run `pvm check <project>` until it prints `ok`. Before a final render, `pvm check <project> --strict` must pass too.
 7. `pvm voice <project>` builds the narration and timeline; `pvm animatic <project>` renders the zero-quota preview
    for checkpoint 2.
@@ -92,9 +94,11 @@ A complete example is in `docs/spec.md` §14.2.
 - Use a pose on a text card with `"pose": "caution"`. Caution suits counterpoints and boundaries; shrug suits
   "we don't know yet".
 - Every poster prompt passes the model sheet as its reference image, so the character stays the same.
-- Changing `description` or the sheet invalidates every pose (about 19 images, ~1,900 AFP). Change one pose's text
-  to regenerate only that pose: `pvm mascot --pose read`. `pvm mascot --recut` redoes the transparent
+- Changing `description` or the sheet invalidates every pose (19 images, about 2,850 AFP at 150 each). Change one
+  pose's text to regenerate only that pose: `pvm mascot --pose read`. `pvm mascot --recut` redoes the transparent
   cut-outs from the kept originals for free.
+- Switching the image model does not invalidate accepted assets: fingerprints record the shape (16:9 sheet, 3:4
+  poses), not the pixel size, which follows the model.
 
 ## Code conventions
 

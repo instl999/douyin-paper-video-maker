@@ -4,11 +4,25 @@
 
 **Volcano Ark Agent Plan (Seedream, TTS) + DeepSeek API + deterministic Python rendering**
 **Based on measured analysis of seven benchmark Douyin videos supplied by the user**
-**Version 1.1 — September 26, 2026** (supersedes v1.0 of September 24, 2026)
+**Version 1.2 — October 7, 2026** (supersedes v1.1 of September 26, 2026)
 
 ---
 
-## 0. What Changed in v1.1
+## 0. What Changed
+
+### v1.2 (October 7, 2026): the renewed Agent Plan
+
+Checked against the Agent Plan documentation (updated September 29, 2026) and live calls after the plan was renewed.
+
+| Area | v1.1 | v1.2 | Why |
+|---|---|---|---|
+| Image model | Seedream 5.0 lite, 99 AFP per image, at least 3.69 MP | Seedream 5.0 pro at up to 2.61 MP ("1.5K"), 150 AFP per image | 5.0 lite now answers `UnsupportedModel` on the plan. Above 2.61 MP, 5.0 pro costs 300 AFP (§8.4, §12) |
+| LLM | DeepSeek V4 Pro through the Agent Plan by default | A key of its own (DeepSeek, or Ark pay-as-you-go); never the Agent Plan | The plan's terms forbid API calls to its text models, at the risk of suspension or a ban (§7.3) |
+| Quota cycle | Calendar month | The plan's month, which starts on the day of purchase (`PVM_PLAN_START`) | The monthly quota resets on that day (§8.6) |
+| Voice cost | "May consume AFP; measure it" | 1,350 AFP per 10,000 characters, recorded in the ledger | Plan AFP rules (§10.2) |
+| Asset fingerprints | Prompt and pixel size | Prompt and the shape of the area | A cheaper size on a new model must not invalidate accepted images (§8.7) |
+
+### v1.1 (September 26, 2026)
 
 Version 1.0 was reviewed against the benchmark files themselves and against the first implementation (`pvm/`). Several of its statements did not hold up when measured. This version replaces them. Everything else in v1.0 that held up is carried forward.
 
@@ -228,8 +242,8 @@ The central boundary is unchanged:
 | Interface | `pvm` command-line tool, plus a coding agent that follows `AGENTS.md` | Web console |
 | Orchestration | Stage stamps (input hashes) in `project.json`; content-hash caches | Job queue, workflow engine |
 | Storage | One folder per video under `projects/` | Database, object storage |
-| LLM | DeepSeek with JSON output: `deepseek-v4-pro` through Agent Plan by default, or DeepSeek's own API | — |
-| Images | Seedream through Agent Plan, behind an adapter | Fallback providers |
+| LLM | DeepSeek with JSON output, with a key of its own (DeepSeek's API, or Ark pay-as-you-go). Never the Agent Plan (§7.3) | — |
+| Images | Seedream 5.0 pro through Agent Plan, behind an adapter | Fallback providers |
 | Voice | Ark TTS (Agent Plan) for final renders; edge-tts (free) for drafts and animatics | — |
 | Timing | TTS word timestamps; `jieba` word boundaries as a fallback | Forced alignment, only for human voiceover |
 | Rendering | Pillow compositor in parallel worker processes → FFmpeg (x264, AAC, compression + limiting to the loudness target) | GPU or HTML renderer |
@@ -395,6 +409,10 @@ The image prompt compiler is deterministic code, not an LLM (§15.2).
 - Save `prompt_version`, `model`, `temperature` and `input_hash` with every output.
 - Never invent a paper, DOI, sample size, effect size or quote. Excerpts are checked mechanically, so an invented quote fails §6.4.
 
+### 7.3 Key and terms
+
+The LLM needs a key of its own: DeepSeek's API by default, or Ark pay-as-you-go. The Agent Plan includes DeepSeek and other text models, but its terms say they must not be used through API calls, only inside supported AI tools. Using the plan's base URL and key elsewhere may be treated as abuse and lead to suspension or a ban (plan overview, updated September 29, 2026). pvm therefore refuses plan endpoints and the plan key for `pvm plan` and `pvm review`. Without an LLM key, a coding agent following `AGENTS.md` writes the storyboard, and `pvm check` still verifies every excerpt. Images and voice are not affected; the plan offers them for API use.
+
 ---
 
 ## 8. Image Generation (Seedream via Agent Plan)
@@ -433,7 +451,7 @@ Image prompts list the allowed labels explicitly and forbid any other text, incl
 
 Request each image at the aspect ratio of the area it will fill, which is the three-panel area below the title. Do not request a full frame with instructions like "reserve the top 18%"; models do not follow percentage instructions reliably.
 
-Seedream 5.0 lite rejects images smaller than 3,686,400 pixels (about 1920×1920). Sizes are scaled up to that minimum at the same aspect ratio, in multiples of 16.
+Seedream 5.0 pro accepts 921,600 to 4,624,220 pixels at aspect ratios from 1:16 to 16:1. On the Agent Plan an image of up to 2.61 MP ("1.5K") costs 150 AFP and a larger one 300, so pvm requests the largest size under that line: about 2.56 MP at the aspect ratio of the box, in multiples of 16 (1632×1568 for a three-panel poster). That is still well above the 1080-pixel width of the video. Seedream 5.0 lite, used until October 2026, needed at least 3,686,400 pixels.
 
 ### 8.5 Panel positions
 
@@ -448,13 +466,15 @@ Panel positions are therefore known by construction, so the focus can follow the
 ### 8.6 Quota pacing
 
 - Daily allowance = (monthly budget − used this cycle) ÷ days left in the cycle, capped by the plan's daily limit.
-- Every paid call is written to a ledger (`cache/afp_ledger.jsonl`).
+- The cycle is the plan's month. It starts on the day of purchase, and the monthly quota resets on that day each month, so `PVM_PLAN_START` holds the purchase date. Without it, pvm falls back to the calendar month. Image models also have a daily limit of half the monthly quota, reset at midnight; image, voice and video models have no 5-hour or weekly limits.
+- Every paid call is written to a ledger (`cache/afp_ledger.jsonl`): images, mascot images and newly synthesized voice.
 - Thresholds by remaining budget: above 30%, normal operation; 10–30%, one candidate per poster; below 10%, approved jobs only.
 - Never assume the plan continues seamlessly after quota exhaustion. Defer, reuse cached assets, or switch to a configured fallback provider.
 
 ### 8.7 Cache and retries
 
-- Cache key: hash of the prompt, reference assets, model, size, style-pack version and provider parameters.
+- Cache key: hash of the prompt, reference assets, model, the shape of the box, style-pack version and provider parameters.
+- Whether an accepted image is still current depends on the prompt, references, style and shape, not on the pixel size or the model. Moving to a model with other sizes therefore keeps accepted images; only new attempts use the new model.
 - Accepted images are reused when re-rendering. A re-render never pays twice.
 - At most 3 attempts per poster, OCR failures included. After that the poster goes to manual review with the best candidate kept.
 
@@ -522,6 +542,7 @@ Scene durations are never fixed before the voice exists.
 - The engine's word timestamps are mapped to character offsets in each sentence.
 - Pauses are 0.25 s between sentences and 0.5 s at paragraph ends.
 - Audio is cached per sentence, keyed by engine, voice, speed and text. Editing one sentence re-synthesizes only that sentence.
+- On the Agent Plan, voice costs 1,350 AFP per 10,000 characters: about 20 AFP for a 25-second demo and about 80 for a two-minute script. Newly synthesized sentences are recorded in the AFP ledger; cached ones cost nothing.
 
 ### 10.3 Subtitles
 
@@ -570,26 +591,28 @@ Cost is driven by poster count, not by video length:
 image_AFP = posters × attempts_per_poster × AFP_per_image
 ```
 
-| Mode | Assumption | Images | AFP at 99 per image |
+| Mode | Assumption | Images | AFP at 150 per image |
 |---|---|---:|---:|
-| Economy | 4 posters × 1.0 attempt | 4 | ~396 |
-| Standard | 5 posters × 1.5 attempts | ~7.5 | ~743 |
-| Quality | 5 posters × 2 candidates, plus the summary card | ~12 | ~1,188 |
-| Per-panel | 15 panels × 1.3 attempts | ~20 | ~1,930 |
+| Economy | 4 posters × 1.0 attempt | 4 | ~600 |
+| Standard | 5 posters × 1.5 attempts | ~7.5 | ~1,125 |
+| Quality | 5 posters × 2 candidates, plus the summary card | ~12 | ~1,800 |
+| Per-panel | 15 panels × 1.3 attempts | ~20 | ~3,000 |
 
-A one-time cost to plan for: the mascot pose library, about 30 poses × 1.5 attempts ≈ 45 images ≈ 4,455 AFP. Schedule it at the start of a quota cycle.
+Voice adds about 80 AFP for a two-minute script (§10.2), so a Standard video costs about 1,200 AFP.
+
+A one-time cost: the mascot library (model sheet and 18 poses) was generated in September 2026 for about 2,475 AFP on 5.0 lite. Regenerating all of it at today's price would cost about 2,850 AFP plus retries; schedule that at the start of a plan month.
 
 Monthly capacity at Standard:
 
 | Plan tier | Monthly AFP | Daily cap | Videos per month (Standard) |
 |---|---:|---:|---:|
-| small | 20,000 | 10,000 | ~26 |
-| medium | 100,000 | 50,000 | ~134 |
-| large | 250,000 | 125,000 | ~336 |
-| max | 500,000 | 250,000 | ~672 |
+| small | 20,000 | 10,000 | ~16 |
+| medium | 100,000 | 50,000 | ~83 |
+| large | 250,000 | 125,000 | ~208 |
+| max | 500,000 | 250,000 | ~416 |
 
-- TTS on Agent Plan may also consume AFP. Measure it; edge-tts drafts cost nothing.
-- The figure of 99 AFP per image and the plan quotas come from the v1.0 planning figures and `pvm/config.py`. They are configuration values, not contractual pricing. Revalidate them in the production account.
+- Prices come from the Agent Plan's AFP rules (updated September 29, 2026): Seedream 5.0 pro 150 AFP per image up to 2.61 MP and 300 above, the first reference image free and 10 AFP for each further one; voice 1,350 AFP per 10,000 characters. They live in `pvm/images.py` (`IMAGE_MODELS`) and `pvm/tts.py`. `PVM_AFP_PER_IMAGE` overrides the image price.
+- The plan's console shows actual usage with a delay of half a day to a day. The local ledger is the operational figure.
 
 The per-video manifest records estimated AFP, actual AFP, image calls, retries, cache hits and the failed stage. The operator chooses between quota-saving and quality modes.
 
@@ -657,7 +680,7 @@ The manifest supports review, rollback, reproduction and takedown if a source la
 - Douyin's current rules for AI-generated content and for declarations.
 - Font licenses for any font added beyond the OFL defaults.
 - Rights to show closed-access paper pages, if the operator wants more than the title region.
-- Agent Plan quotas, per-image AFP, TTS billing and the terms for the chosen voices.
+- The terms for the chosen voices. (Agent Plan quotas, the purchase-day month, image and voice prices, and the rule that the plan's text models are not for API calls were confirmed in the plan documentation on October 7, 2026.)
 
 ---
 
@@ -751,8 +774,8 @@ The example below uses a 12-sentence script about Kruger & Dunning (1999). Sente
              "voice": {"engine": "edge", "voice": "zh-CN-YunxiNeural", "rate": "+10%"}},
   "sources": [{"id": "src1", "doi": "10.1037/0022-3514.77.6.1121", "license": null, "display": "title_crop"}],
   "scenes": [{"id": "open", "type": "paper", "start": 0.0, "end": 14.2}],
-  "visuals": [{"scene": "p1", "file": "visuals/p1.png", "provider": "ark", "model": "doubao-seedream-5.0-lite",
-               "prompt_hash": "…", "attempts": 2, "ocr": "pass", "afp": 198}],
+  "visuals": [{"scene": "p1", "file": "visuals/p1.png", "provider": "ark", "model": "doubao-seedream-5-0-pro",
+               "prompt_hash": "…", "attempts": 2, "ocr": "pass", "afp": 300}],
   "claims": {"sentences": 12, "source_fact": 5, "verified": 5},
   "labels": {"visible": "含AI生成内容", "metadata": true},
   "qa": {"loudness_lufs": -12.1, "true_peak_dbtp": -1.2, "max_frozen_s": 3.1, "black_frames": 0}
@@ -885,7 +908,7 @@ Automatic paper discovery, topic ideation, large batches and automatic publishin
 ## 18. References and Revalidation
 
 - Benchmark analysis: the seven files in the user's benchmark folder, measured with ffmpeg 7.1 filters (§2.5); licenses from the OpenAlex API (September 2026).
-- Volcano Ark Agent Plan documentation: short-video guidance, AFP usage APIs, over-quota rules, Seedream capabilities including reference images.
+- Volcano Ark Agent Plan documentation: plan overview and AFP rules (updated September 29, 2026: models, quotas, purchase-day month, prices, the API-use rule for text models), the image generation API (size rules per model, reference images, transparent backgrounds), over-quota rules.
 - DeepSeek API documentation: JSON output, function calling.
 - *Measures for Labeling AI-Generated Synthetic Content* (in force since September 1, 2025) and GB 45438-2025.
 - OpenAlex open-access and license fields; Unpaywall.
