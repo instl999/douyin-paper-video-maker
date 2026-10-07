@@ -58,7 +58,19 @@ class LLM:
         raise PvmError(f"LLM failed after {tries} tries: {problem}")
 
 
+PLAN_ENDPOINTS = ("/api/plan/", "/api/coding/")  # Volcano's subscription plans: their text models are for AI tools only
+
+
 def make_llm(settings: Settings) -> LLM:
+    # The Agent/Coding Plan terms (docs, 2026-09-29): its text models must not be used through API calls, and doing so
+    # risks suspension of the subscription or a ban. pvm's plan and review are API calls, so they need their own key.
+    if any(part in settings.llm_base_url + "/" for part in PLAN_ENDPOINTS) or (
+            settings.llm_api_key and settings.llm_api_key == settings.api_key):
+        raise PvmError("pvm plan and pvm review cannot use the Agent Plan: its terms forbid API calls to its text "
+                       "models (risk of suspension or a ban). Set PVM_LLM_API_KEY to a DeepSeek key, or point "
+                       "PVM_LLM_BASE_URL at Ark pay-as-you-go with a key of its own")
     if not settings.llm_api_key:
-        raise PvmError("the planner needs PVM_LLM_API_KEY (DeepSeek) in .env")
+        raise PvmError("pvm plan and pvm review need PVM_LLM_API_KEY (a DeepSeek key by default; the Agent Plan key "
+                       "does not cover text models). Without one, write the storyboard by hand or with a coding agent "
+                       "(AGENTS.md); pvm check still verifies every excerpt")
     return LLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model)

@@ -154,7 +154,8 @@ class RenderSmokeTest(TempHome):
     def test_cover_carries_the_implicit_aigc_label(self):
         p, sb, tl = self.make()
         p.output_dir.mkdir(parents=True, exist_ok=True)
-        info = Image.open(save_cover(p, sb, tl)).info
+        with Image.open(save_cover(p, sb, tl)) as cover:
+            info = cover.info
         self.assertIn("http://www.tc260.org.cn/ns/AIGC/1.0/", info["XML:com.adobe.xmp"])
         self.assertEqual(json.loads(info["AIGC"])["Label"], "1")
 

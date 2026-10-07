@@ -22,7 +22,6 @@ from .schema import GENERATED_TYPES
 from .util import ROOT, PvmError, data_dir, read_json, sha256_file, stable_hash, warn, write_bytes, write_json
 
 PROMPT_VERSION = 1
-LONG_SIDE = 2048
 _LOCK = threading.Lock()  # one OCR run and one ledger write at a time
 
 
@@ -70,21 +69,56 @@ def compile_prompt(scene, style: dict) -> str:
     return "\n".join(lines)
 
 
-MIN_PIXELS = 3_686_400  # Seedream 5.0 lite rejects smaller images (verified 2026-09-28: "at least 3686400 pixels")
+# ---------------------------------------------------------------- models, sizes and prices
+
+@dataclass(frozen=True)
+class ImageModel:
+    """What a Seedream model accepts and what one image costs on the Agent Plan."""
+    min_pixels: int
+    max_pixels: int
+    target_pixels: int  # the size pvm asks for: the largest at the lowest price
+    prices: tuple[tuple[int, int], ...]  # (up to this many pixels, AFP per image), ascending
+    extra_reference_afp: int = 0  # per reference image after the first
+
+    def afp(self, size: tuple[int, int], references: int = 0) -> int:
+        pixels = size[0] * size[1]
+        price = next((afp for limit, afp in self.prices if pixels <= limit), self.prices[-1][1])
+        return price + self.extra_reference_afp * max(0, references - 1)
 
 
-def request_size(box: tuple[int, int], long_side: int = LONG_SIDE) -> tuple[int, int]:
-    """Pixel size at the aspect ratio of the area the image fills: long side ~2K, multiples of 16, and never
-    below the model's minimum pixel count."""
+IMAGE_MODELS = {  # docs, 2026-09-29: image API size rules and the Agent Plan's AFP rules
+    # 0.92-4.62 MP; up to 2.61 MP ("1.5K") costs 150 AFP, above that 300. First reference image free, then 10 each.
+    "doubao-seedream-5-0-pro": ImageModel(921_600, 4_624_220, 2_560_000, ((2_610_000, 150), (4_624_220, 300)), 10),
+    # 3.69-16.8 MP at 99 AFP. Left the Agent Plan in October 2026 (UnsupportedModel); pay-as-you-go may still serve it.
+    "doubao-seedream-5-0-lite": ImageModel(3_686_400, 16_777_216, 4_194_304, ((16_777_216, 99),)),
+}
+
+
+def image_model(name: str) -> ImageModel:
+    """Limits and price of a model ID. Dated pay-as-you-go IDs (doubao-seedream-5-0-pro-260628) match their family."""
+    key = re.sub(r"-\d{6}$", "", name.strip().lower().replace(".", "-"))
+    if key not in IMAGE_MODELS:
+        raise PvmError(f"unknown image model '{name}' (PVM_IMAGE_MODEL); known: {', '.join(IMAGE_MODELS)}")
+    return IMAGE_MODELS[key]
+
+
+def image_cost(settings: Settings, size: tuple[int, int], references: int = 0) -> int:
+    """AFP for one image: PVM_AFP_PER_IMAGE when set, otherwise the model's price at this size."""
+    return settings.afp_per_image or image_model(settings.image_model).afp(size, references)
+
+
+def request_size(box: tuple[int, int], model: ImageModel) -> tuple[int, int]:
+    """Pixel size at the aspect ratio of the area the image fills, in multiples of 16: as large as the model's
+    lowest price allows, and within the pixel range it accepts."""
     w, h = box
-    if w >= h:
-        size = (long_side, max(512, round(long_side * h / w / 16) * 16))
-    else:
-        size = (max(512, round(long_side * w / h / 16) * 16), long_side)
-    if size[0] * size[1] < MIN_PIXELS:
-        k = (MIN_PIXELS / (size[0] * size[1])) ** 0.5
-        size = (-(-int(size[0] * k) // 16) * 16 + 16, -(-int(size[1] * k) // 16) * 16 + 16)
-    return size
+    pixels = min(max(model.target_pixels, model.min_pixels), model.max_pixels)
+    scale = (pixels / (w * h)) ** 0.5
+    size = [max(16, round(w * scale / 16) * 16), max(16, round(h * scale / 16) * 16)]
+    while size[0] * size[1] > pixels:  # rounding up must not cross into the next price
+        size[0 if size[0] >= size[1] else 1] -= 16
+    while size[0] * size[1] < model.min_pixels:
+        size[0 if size[0] <= size[1] else 1] += 16
+    return size[0], size[1]
 
 
 # ---------------------------------------------------------------- provider adapter (spec §8.1)
@@ -142,14 +176,18 @@ class ArkImageProvider:
             refs = [_data_url(p) for p in req.references]
             body["image"] = refs[0] if len(refs) == 1 else refs
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        with httpx.Client(timeout=httpx.Timeout(180.0, connect=15.0), transport=self.transport) as client:
+        # 5.0 pro takes about two minutes for a three-panel poster (measured 2026-10-07)
+        with httpx.Client(timeout=httpx.Timeout(300.0, connect=15.0), transport=self.transport) as client:
             for attempt in range(3):
                 try:
                     r = client.post(f"{self.base_url}/images/generations", json=body, headers=headers)
                     break
-                except httpx.HTTPError as e:
+                except (httpx.ConnectError, httpx.ConnectTimeout) as e:  # never reached the server: safe to resend
                     if attempt == 2:
                         raise PvmError(f"Seedream network error: {e}") from e
+                except httpx.HTTPError as e:  # the image may exist and be billed; resending could pay twice
+                    raise PvmError(f"Seedream did not answer ({type(e).__name__}). The plan may still bill this "
+                                   "image, so it was not resent; check the usage in the plan console") from e
             data = _json(r)
             if r.status_code != 200 or data.get("error"):
                 err = data.get("error") or {}
@@ -263,34 +301,36 @@ class SceneResult:
     size: tuple[int, int] = (0, 0)
 
 
-def _spend_check(settings: Settings) -> None:
+def _spend_check(cost: int) -> None:
     st = quota.status()
-    if st.allowance_today < settings.afp_per_image:
+    if st.allowance_today < cost:
         raise PvmError(f"today's AFP allowance ({st.allowance_today:,}) is below the cost of one image "
-                       f"({settings.afp_per_image}); the monthly budget is paced over the days left (pvm quota)")
+                       f"({cost}); the monthly budget is paced over the days left (pvm quota)")
     if st.mode == "approved-only":
         warn("less than 10% of the monthly AFP budget is left; generate only for approved storyboards")
 
 
-def prompt_fingerprint(prompt: str, size: tuple[int, int], style: dict, refs: list[Path]) -> str:
-    return stable_hash({"prompt": prompt, "size": list(size), "style": style.get("version"),
+def prompt_fingerprint(prompt: str, box: tuple[int, int], style: dict, refs: list[Path]) -> str:
+    # The shape of the area, not the pixel size: moving to a model with other sizes must not void accepted images.
+    return stable_hash({"prompt": prompt, "aspect": round(box[0] / box[1], 3), "style": style.get("version"),
                         "refs": [sha256_file(r) for r in refs], "v": PROMPT_VERSION})[:16]
 
 
 def generate_scene(p: Project, scene, *, style: dict, box: tuple[int, int], provider, settings: Settings,
                    attempts: int, regenerate: bool = False, dry_run: bool = False) -> SceneResult:
     prompt = compile_prompt(scene, style)
-    size = request_size(box)
+    size = request_size(box, image_model(settings.image_model))
     refs = [ROOT / r for r in style.get("references", [])]
+    cost = image_cost(settings, size, len(refs))
     labels = [label for _, ls in scene_panels(scene) for label in ls]
-    fingerprint = prompt_fingerprint(prompt, size, style, refs)
+    fingerprint = prompt_fingerprint(prompt, box, style, refs)
     out = p.visuals_dir / f"{scene.id}.png"
     meta_path = p.visuals_dir / f"{scene.id}.json"
     meta = read_json(meta_path) or {}
     if not regenerate and out.exists() and meta.get("fingerprint") == fingerprint and meta.get("status") == "accepted":
         return SceneResult(scene.id, "up-to-date", 0, str(out), meta.get("attempts", []), prompt, size)
     if dry_run:
-        return SceneResult(scene.id, "dry-run", settings.afp_per_image, None, [], prompt, size)
+        return SceneResult(scene.id, "dry-run", cost, None, [], prompt, size)
 
     tried: list[dict] = []
     best: tuple[int, bytes] | None = None
@@ -303,11 +343,11 @@ def generate_scene(p: Project, scene, *, style: dict, box: tuple[int, int], prov
             data, source = cached.read_bytes(), "cache"
         else:
             with _LOCK:
-                _spend_check(settings)
+                _spend_check(cost)
             generated = provider.generate(ImageRequest(prompt, size, refs))
-            spent += settings.afp_per_image
+            spent += cost
             with _LOCK:
-                quota.record(settings.afp_per_image, kind="image", project=p.slug, model=provider.model,
+                quota.record(cost, kind="image", project=p.slug, model=provider.model,
                              note=f"{scene.id} attempt {attempt}")
             data, source = _to_png(generated.data), "generated"
             write_bytes(cached, data)
@@ -362,8 +402,8 @@ def stale_images(p: Project, sb) -> list[str]:
     stale = []
     for sc in image_scenes(sb):
         meta = read_json(p.visuals_dir / f"{sc.id}.json")
-        if meta and meta.get("fingerprint") != prompt_fingerprint(compile_prompt(sc, style),
-                                                                  request_size(generation_box(ctx, sc)), style, refs):
+        if meta and meta.get("fingerprint") != prompt_fingerprint(compile_prompt(sc, style), generation_box(ctx, sc),
+                                                                  style, refs):
             stale.append(sc.id)
     return stale
 

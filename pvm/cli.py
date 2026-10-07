@@ -249,11 +249,10 @@ def cmd_mascot(a) -> None:
             review.append(r.name)
         else:
             log(f"  {r.name:<12} {r.status}")
-    settings = get_settings()
     if a.dry_run:
         todo = [r for r in results if r.status == "dry-run"]
-        log(f"estimate: {len(todo)} image(s), {len(todo) * settings.afp_per_image:,} AFP at one attempt each; "
-            f"today's allowance {status().allowance_today:,} AFP")
+        log(f"estimate: {len(todo)} image(s), {sum(r.afp for r in todo):,} AFP at one attempt each "
+            f"({get_settings().image_model}); today's allowance {status().allowance_today:,} AFP")
     else:
         log(f"spent {sum(r.afp for r in results):,} AFP; review {MASCOT_DIR / 'contact.png'}")
     if review:
@@ -293,9 +292,9 @@ def cmd_images(a) -> None:
     if a.dry_run:
         todo = [r for r in results if r.status == "dry-run"]
         attempts = a.attempts or settings.image_attempts
-        log(f"estimate: {len(todo)} image(s), {len(todo) * settings.afp_per_image:,} AFP at one attempt each, up to "
-            f"{len(todo) * settings.afp_per_image * attempts:,} with retries; today's allowance "
-            f"{status().allowance_today:,} AFP")
+        once = sum(r.afp for r in todo)
+        log(f"estimate: {len(todo)} image(s), {once:,} AFP at one attempt each, up to {once * attempts:,} with "
+            f"retries ({settings.image_model}); today's allowance {status().allowance_today:,} AFP")
     else:
         log(f"spent {sum(r.afp for r in results):,} AFP; today's allowance left {status().allowance_today:,} AFP")
     if review:
@@ -380,7 +379,10 @@ def cmd_quota(a) -> None:
 
     st = status()
     log(f"plan tier {st.tier}: monthly budget {st.monthly_budget:,} AFP, daily cap {st.daily_cap:,} AFP")
-    log(f"used this month {st.used_cycle:,} AFP ({100 * (1 - st.remaining_fraction):.0f}%), today {st.used_today:,}; "
+    source = "from PVM_PLAN_START" if st.cycle_known else \
+        "calendar month; set PVM_PLAN_START to the purchase date, the plan's month starts on that day"
+    log(f"cycle {st.cycle[0]} to {st.cycle[1]} ({source})")
+    log(f"used this cycle {st.used_cycle:,} AFP ({100 * (1 - st.remaining_fraction):.0f}%), today {st.used_today:,}; "
         f"{st.days_left} day(s) left in the cycle")
     log(f"allowance today: {st.allowance_today:,} AFP; mode: {st.mode}")
 

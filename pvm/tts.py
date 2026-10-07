@@ -12,17 +12,20 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 
 import httpx
 
+from . import quota
 from .config import Settings
 from .schema import VoiceOptions
 from .util import PvmError, data_dir, read_json, stable_hash, warn, write_bytes, write_json
 
 CACHE_VERSION = 1
+ARK_AFP_PER_10K_CHARS = 1350  # doubao-seed-tts-2.0 on the Agent Plan (docs, 2026-09-29)
 
 
 @dataclass
@@ -243,6 +246,10 @@ def synthesize(engine, texts: list[str]) -> tuple[list[Clip], int]:
         for i, clip in zip(todo, fresh):
             _store(keys[i], clip, params, texts[i])
             clips[i] = clip
+        if engine.name == "ark":  # the plan bills voice by characters; cached sentences cost nothing
+            chars = sum(len(texts[i]) for i in todo)
+            quota.record(math.ceil(chars * ARK_AFP_PER_10K_CHARS / 10_000), kind="voice", model=engine.speaker,
+                         note=f"{len(todo)} sentence(s), {chars} characters")
     return [c for c in clips if c is not None], len(todo)
 
 

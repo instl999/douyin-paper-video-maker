@@ -38,13 +38,31 @@ class PromptTest(unittest.TestCase):
         self.assertIn("only readable text allowed is these Chinese words on paper tags: 不会做、怎么知道", prompt)
         self.assertIn("no digits", prompt)
 
-    def test_request_size_follows_the_panel_area(self):
-        self.assertEqual(request_size((1000, 960)), (2048, 1968))
-        for box in ((1000, 2000), (1000, 700), (1000, 300)):
-            w, h = request_size(box)
-            self.assertGreaterEqual(w * h, images.MIN_PIXELS, box)  # the model rejects smaller images
+    def test_request_size_follows_the_panel_area_at_the_lowest_price(self):
+        pro = images.image_model("doubao-seedream-5-0-pro")
+        self.assertEqual(request_size((1000, 960), pro), (1632, 1568))
+        for box in ((1000, 960), (1000, 2000), (1000, 700), (1000, 300), (16, 9), (3, 4)):
+            w, h = request_size(box, pro)
+            self.assertTrue(pro.min_pixels <= w * h <= 2_610_000, (box, w, h))  # 1.5K and below: 150 AFP
+            self.assertEqual(pro.afp((w, h)), 150)
             self.assertEqual((w % 16, h % 16), (0, 0))
-            self.assertAlmostEqual(w / h, box[0] / box[1], delta=0.03)
+            self.assertAlmostEqual(w / h, box[0] / box[1], delta=0.03 * box[0] / box[1])
+        lite = images.image_model("doubao-seedream-5.0-lite")
+        for box in ((1000, 960), (1000, 300), (16, 9)):
+            w, h = request_size(box, lite)
+            self.assertGreaterEqual(w * h, 3_686_400, box)  # lite rejects smaller images
+
+    def test_model_prices_on_the_agent_plan(self):
+        pro = images.image_model("doubao-seedream-5-0-pro-260628")  # a dated pay-as-you-go ID finds its family
+        self.assertEqual(pro.afp((1536, 1536)), 150)
+        self.assertEqual(pro.afp((2048, 2048)), 300)
+        self.assertEqual(pro.afp((1536, 1536), references=3), 170)  # the first reference image is free
+        self.assertEqual(images.image_model("doubao-seedream-5.0-lite").afp((2560, 1440), references=1), 99)
+        with self.assertRaises(PvmError):
+            images.image_model("doubao-seedream-9")
+        settings = SimpleNamespace(afp_per_image=None, image_model="doubao-seedream-5-0-pro")
+        self.assertEqual(images.image_cost(settings, (1632, 1568), 1), 150)
+        self.assertEqual(images.image_cost(SimpleNamespace(afp_per_image=120, image_model="x"), (1, 1)), 120)
 
 
 class LabelCheckTest(unittest.TestCase):
@@ -92,6 +110,30 @@ class ArkProviderTest(unittest.TestCase):
         self.assertFalse(seen["body"]["watermark"])
         self.assertEqual(Image.open(io.BytesIO(out.data)).size, (64, 64))
 
+    def test_resends_only_requests_that_never_arrived(self):
+        calls = {"n": 0}
+
+        def flaky_connect(request):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise httpx.ConnectError("refused", request=request)
+            return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(png_bytes()).decode()}]})
+
+        provider = ArkImageProvider("https://ark.example/v3", "k", "m", transport=httpx.MockTransport(flaky_connect))
+        provider.generate(ImageRequest("p", (1632, 1568)))
+        self.assertEqual(calls["n"], 3)
+
+        def slow(request):
+            calls["n"] += 1
+            raise httpx.ReadTimeout("no answer", request=request)
+
+        calls["n"] = 0
+        provider = ArkImageProvider("https://ark.example/v3", "k", "m", transport=httpx.MockTransport(slow))
+        with self.assertRaises(PvmError) as ctx:
+            provider.generate(ImageRequest("p", (1632, 1568)))
+        self.assertEqual(calls["n"], 1)  # a request the server may have processed is never sent twice
+        self.assertIn("not resent", str(ctx.exception))
+
     def test_errors_are_readable(self):
         transport = httpx.MockTransport(lambda r: httpx.Response(
             400, json={"error": {"code": "InvalidParameter", "message": "size out of range"}}))
@@ -118,7 +160,7 @@ class GenerateSceneTest(TempHome):
         p.set_script(SCRIPT)
         write_json(p.storyboard_path, board())
         scene = poster_scene()
-        settings = SimpleNamespace(afp_per_image=99, image_attempts=3)
+        settings = SimpleNamespace(afp_per_image=99, image_attempts=3, image_model="doubao-seedream-5-0-pro")
         provider = FakeProvider()
         ocr_results = iter([[("不会做", 0.99)],  # attempt 1: one label missing
                             [("不会做", 0.99), ("怎么知道", 0.98)]])  # attempt 2: both labels found
@@ -138,7 +180,7 @@ class GenerateSceneTest(TempHome):
         p, _ = Project.open_or_create("img2")
         p.set_script(SCRIPT)
         write_json(p.storyboard_path, board())
-        settings = SimpleNamespace(afp_per_image=99, image_attempts=2)
+        settings = SimpleNamespace(afp_per_image=99, image_attempts=2, image_model="doubao-seedream-5-0-pro")
         with mock.patch.object(images, "read_text", return_value=[("AI 2024", 0.99)]):
             result = generate_scene(p, poster_scene(), style=STYLE, box=(1000, 960), provider=FakeProvider(),
                                     settings=settings, attempts=2)

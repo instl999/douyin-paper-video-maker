@@ -8,7 +8,7 @@ from unittest import mock
 import numpy as np
 from PIL import Image, ImageDraw
 
-from pvm import mascot
+from pvm import mascot, quota
 from pvm.images import GeneratedImage
 from tests.helpers import TempHome
 
@@ -88,21 +88,37 @@ class RunMascotTest(TempHome):
 
     def test_sheet_then_poses_with_the_sheet_as_reference(self):
         provider = FakeProvider()
-        settings = SimpleNamespace(afp_per_image=99, image_attempts=2)
+        settings = SimpleNamespace(afp_per_image=99, image_attempts=2, image_model="doubao-seedream-5-0-pro")
         with mock.patch.object(mascot, "read_text", return_value=[]), \
                 mock.patch.object(mascot, "get_settings", return_value=settings):
             results = mascot.run_mascot(poses=["front", "wave"], provider=provider)
         self.assertEqual([r.status for r in results], ["accepted", "accepted", "accepted"])
         self.assertEqual(provider.requests[0].references, [])
         self.assertEqual(provider.requests[1].references, [self.dir / "sheet.png"])
+        self.assertEqual(provider.requests[0].size, (2128, 1200))  # 16:9 sheet within the 150-AFP size
+        self.assertEqual(provider.requests[1].size, (1392, 1824))  # 3:4 pose
         self.assertTrue((self.dir / "poses" / "wave.png").exists())
         with Image.open(self.dir / "poses" / "wave.png") as wave:
             self.assertEqual(wave.mode, "RGBA")
         self.assertTrue((self.dir / "originals" / "wave.jpg").exists())  # kept for later re-cuts
         self.assertTrue((self.dir / "contact.png").exists())
 
+    def test_a_new_image_model_keeps_accepted_assets(self):
+        provider = FakeProvider()
+        pro = SimpleNamespace(afp_per_image=None, image_attempts=1, image_model="doubao-seedream-5-0-pro")
+        with mock.patch.object(mascot, "read_text", return_value=[]), \
+                mock.patch.object(mascot, "get_settings", return_value=pro):
+            mascot.run_mascot(poses=["front"], provider=provider)
+        self.assertEqual([e["afp"] for e in quota.entries()], [150, 150])  # sheet and pose at the 1.5K price
+        lite = SimpleNamespace(afp_per_image=None, image_attempts=1, image_model="doubao-seedream-5.0-lite")
+        with mock.patch.object(mascot, "read_text", return_value=[]), \
+                mock.patch.object(mascot, "get_settings", return_value=lite):
+            results = mascot.run_mascot(poses=["front"], provider=provider)
+        self.assertEqual([r.status for r in results], ["up-to-date", "up-to-date"])  # other sizes, same assets
+        self.assertEqual(len(provider.requests), 2)
+
     def test_stray_text_sends_the_image_to_review(self):
-        settings = SimpleNamespace(afp_per_image=99, image_attempts=1)
+        settings = SimpleNamespace(afp_per_image=99, image_attempts=1, image_model="doubao-seedream-5-0-pro")
         with mock.patch.object(mascot, "read_text", return_value=[("Hello", 0.95)]), \
                 mock.patch.object(mascot, "get_settings", return_value=settings):
             results = mascot.run_mascot(sheet_only=True, provider=FakeProvider())

@@ -1,22 +1,21 @@
 {
   "name": "read",
   "status": "accepted",
-  "fingerprint": "2a2efe59659fec00",
-  "prompt": "REFERENCE: the attached model sheet shows the character; keep its face, hair, hair clip, glasses, clothes, colors, proportions and paper-cut style exactly the same.\nCHARACTER: an original science-communicator mascot: a friendly young researcher about two and a half heads tall, short dark-brown hair with a soft side part and one small cowlick, a small ochre hair clip on the left side, round thin navy-rimmed glasses, a round face with dot eyes, light blush and a small smile, a navy cardigan over a cream round-collar shirt, warm brown trousers, simple brown shoes, and a small ochre notebook as a signature prop; drawn as layered cut paper with visible paper grain, clean dark outlines and soft shadows.\nPOSE: reading a paper document held in both hands, focused, glasses slightly lowered. Exactly one character, full body.\nBACKGROUND: plain flat off-white background with nothing else in the scene, the whole body visible with a generous empty margin, only a soft contact shadow under the feet.\nAVOID: no resemblance to existing anime, cartoon or game characters; no white or spiky hair; no black outfit; no text, letters, digits, logos or symbols anywhere.",
+  "fingerprint": "51ed7e97753d4647",
+  "prompt": "REFERENCE: the attached model sheet shows the character; keep its face, hair, hair clip, glasses, clothes, colors, proportions and paper-cut style exactly the same.\nCHARACTER: an original science-communicator mascot: a friendly young researcher about two and a half heads tall, short dark-brown hair with a soft side part and one small cowlick, a small ochre hair clip on the left side, round thin navy-rimmed glasses, a round face with dot eyes, light blush and a small smile, a navy cardigan over a cream round-collar shirt, warm brown trousers, simple brown shoes, and a small ochre notebook as a signature prop; drawn as layered cut paper with visible paper grain, clean dark outlines and soft shadows.\nPOSE: reading a pale ochre paper document with a clear dark outline, held in both hands, focused, glasses slightly lowered. Exactly one character, full body.\nBACKGROUND: plain flat off-white background with nothing else in the scene, the whole body visible with a generous empty margin, only a soft contact shadow under the feet.\nAVOID: no resemblance to existing anime, cartoon or game characters; no white or spiky hair; no black outfit; no text, letters, digits, logos or symbols anywhere.",
   "size": [
-    1664,
-    2224
+    1392,
+    1824
   ],
-  "model": "doubao-seedream-5.0-lite",
+  "model": "doubao-seedream-5-0-pro",
   "attempts": [
     {
       "attempt": 1,
       "source": "generated",
       "ok": true,
       "problems": [],
-      "foreground": 0.228
+      "foreground": 0.193
     }
   ],
-  "afp": 99,
-  "foreground": 0.222
+  "afp": 249
 }

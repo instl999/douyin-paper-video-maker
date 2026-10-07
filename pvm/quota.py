@@ -8,10 +8,10 @@ from __future__ import annotations
 import json
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from .config import get_settings
-from .util import data_dir, ensure_dir, now_iso
+from .util import PvmError, data_dir, ensure_dir, now_iso
 
 MODES = (  # (minimum remaining fraction, mode) — spec §8.6
     (0.30, "normal"),
@@ -68,9 +68,34 @@ def used_between(start: date, end: date, items: list[dict] | None = None) -> int
     return total
 
 
-def cycle_bounds(today: date) -> tuple[date, date]:
-    """The quota cycle is the calendar month."""
-    return today.replace(day=1), today.replace(day=monthrange(today.year, today.month)[1])
+def _add_months(d: date, months: int) -> date:
+    years, month0 = divmod(d.month - 1 + months, 12)
+    year = d.year + years
+    return date(year, month0 + 1, min(d.day, monthrange(year, month0 + 1)[1]))
+
+
+def plan_start(raw: str) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise PvmError(f"PVM_PLAN_START must be the plan's purchase date, like 2026-10-07 (got '{raw}')") from None
+
+
+def cycle_bounds(today: date, start: date | None = None) -> tuple[date, date]:
+    """First and last day of the quota month that contains today.
+
+    The Agent Plan's month starts on the day of purchase and its monthly quota resets on that day (docs, 2026-09-29),
+    so with the purchase date the cycle runs from that day of the month to the day before it in the next month
+    (days 29-31 clamp to shorter months). Without it, the calendar month.
+    """
+    if start is None:
+        return today.replace(day=1), today.replace(day=monthrange(today.year, today.month)[1])
+    months = (today.year - start.year) * 12 + today.month - start.month
+    if _add_months(start, months) > today:
+        months -= 1
+    return _add_months(start, months), _add_months(start, months + 1) - timedelta(days=1)
 
 
 def daily_allowance(monthly_budget: int, used_before_today: int, used_today: int, days_left: int,
@@ -95,6 +120,8 @@ class QuotaStatus:
     used_today: int
     days_left: int
     allowance_today: int
+    cycle: tuple[date, date]
+    cycle_known: bool  # False: PVM_PLAN_START is not set, so the calendar month stands in
 
     @property
     def remaining(self) -> int:
@@ -115,7 +142,8 @@ class QuotaStatus:
 def status(today: date | None = None) -> QuotaStatus:
     s = get_settings()
     today = today or date.today()
-    start, end = cycle_bounds(today)
+    purchased = plan_start(s.plan_start)
+    start, end = cycle_bounds(today, purchased)
     items = entries()
     used_cycle = used_between(start, end, items)
     used_today = used_between(today, today, items)
@@ -130,4 +158,6 @@ def status(today: date | None = None) -> QuotaStatus:
         days_left=days_left,
         allowance_today=daily_allowance(s.afp_monthly_budget, used_cycle - used_today, used_today, days_left,
                                         cap, s.afp_daily_budget),
+        cycle=(start, end),
+        cycle_known=purchased is not None,
     )

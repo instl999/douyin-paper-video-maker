@@ -11,7 +11,8 @@ from .util import ROOT, read_text
 AGENT_PLAN_BASE_URL = "https://ark.cn-beijing.volces.com/api/plan/v3"
 AGENT_PLAN_TTS_URL = "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional"
 
-# Agent Plan quotas for image/voice models (docs, 2026-09): only daily (= half of monthly) and monthly limits apply.
+# Agent Plan quotas for image/voice models (docs, 2026-09-29): only daily (= half of monthly) and monthly limits apply;
+# the month starts on the day of purchase (PVM_PLAN_START).
 PLAN_TIERS = {
     "small": {"monthly": 20_000, "daily": 10_000},
     "medium": {"monthly": 100_000, "daily": 50_000},
@@ -58,9 +59,10 @@ class Settings:
     edge_voice: str
     edge_rate: str
     plan_tier: str
+    plan_start: str  # the plan's purchase date (YYYY-MM-DD): its quota month starts on that day; "" = calendar month
     afp_monthly_budget: int
     afp_daily_budget: int | None  # explicit override; otherwise quota.daily_allowance() paces the month
-    afp_per_image: int  # planning figure from the spec (§12); revalidate against the account
+    afp_per_image: int | None  # explicit override; otherwise the model's price (images.IMAGE_MODELS)
     image_attempts: int  # retry budget per image, OCR failures included (spec §8.7)
     contact_email: str | None
     s2_api_key: str | None
@@ -106,15 +108,10 @@ def get_settings() -> Settings:
             api_key, api_key_var = get(var), var
             break
 
-    # LLM: a DeepSeek key of its own wins; otherwise the Agent Plan key covers the planner too, because the plan
-    # includes DeepSeek text models (verified 2026-09-28: deepseek-v4-pro-beta, v4.1-flash, v4-flash-beta).
+    # LLM: always a key of its own (DeepSeek by default, or Ark pay-as-you-go). The Agent Plan key is for images and
+    # voice only: the plan's terms forbid API calls to its text models, at the risk of suspension or a ban (docs,
+    # 2026-09-29), so it never falls back to the plan.
     ark_base = get("PVM_ARK_BASE_URL", AGENT_PLAN_BASE_URL).rstrip("/")
-    llm_key = get("PVM_LLM_API_KEY") or None
-    if llm_key or not api_key:
-        llm_base, llm_model = get("PVM_LLM_BASE_URL", "https://api.deepseek.com"), get("PVM_LLM_MODEL", "deepseek-chat")
-    else:
-        llm_key = api_key
-        llm_base, llm_model = get("PVM_LLM_BASE_URL", ark_base), get("PVM_LLM_MODEL", "deepseek-v4-pro-beta")
 
     tier = get("PVM_PLAN_TIER", "small").lower()
     monthly_default = PLAN_TIERS.get(tier, PLAN_TIERS["small"])["monthly"]
@@ -124,7 +121,7 @@ def get_settings() -> Settings:
         api_key_var=api_key_var,
         ark_base_url=ark_base,
         image_provider=get("PVM_IMAGE_PROVIDER", "ark").lower(),
-        image_model=get("PVM_IMAGE_MODEL", "doubao-seedream-5.0-lite"),
+        image_model=get("PVM_IMAGE_MODEL", "doubao-seedream-5-0-pro"),  # 5.0 lite left the plan in October 2026
         image_concurrency=max(1, get_int("PVM_IMAGE_CONCURRENCY", 2)),
         tts_engine=get("PVM_TTS_ENGINE", "auto").lower(),
         tts_url=get("PVM_TTS_URL", AGENT_PLAN_TTS_URL),
@@ -134,16 +131,17 @@ def get_settings() -> Settings:
         edge_voice=get("PVM_EDGE_VOICE", "zh-CN-YunxiNeural"),
         edge_rate=get("PVM_EDGE_RATE", "+10%"),
         plan_tier=tier,
+        plan_start=get("PVM_PLAN_START"),
         afp_monthly_budget=get_int("PVM_AFP_MONTHLY_BUDGET", monthly_default),
         afp_daily_budget=get_int("PVM_AFP_DAILY_BUDGET", 0) if daily_override else None,
-        afp_per_image=get_int("PVM_AFP_PER_IMAGE", 99),
+        afp_per_image=get_int("PVM_AFP_PER_IMAGE", 0) or None,
         image_attempts=max(1, get_int("PVM_IMAGE_ATTEMPTS", 3)),
         contact_email=get("PVM_CONTACT_EMAIL") or None,
         s2_api_key=get("SEMANTIC_SCHOLAR_API_KEY") or None,
         openalex_api_key=get("OPENALEX_API_KEY") or None,
-        llm_base_url=llm_base.rstrip("/"),
-        llm_api_key=llm_key,
-        llm_model=llm_model,
+        llm_base_url=get("PVM_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
+        llm_api_key=get("PVM_LLM_API_KEY") or None,
+        llm_model=get("PVM_LLM_MODEL", "deepseek-chat"),
         style=get("PVM_STYLE", "paper-cut"),
         x264_preset=get("PVM_X264_PRESET", "veryfast"),
         crf=get_int("PVM_CRF", 20),
