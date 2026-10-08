@@ -90,7 +90,7 @@ def build_voice(p: Project, opts: VoiceOptions | None = None, engine: str | None
     track_path = p.audio_dir / "voice.json"
     wav = p.audio_dir / "voice.wav"
 
-    eng, clips, fresh = synthesize_with_fallback(settings, opts, texts, engine)
+    eng, clips, fresh = synthesize_with_fallback(settings, opts, texts, engine, project=p.slug)
     inputs = {"engine": eng.params(), "sentences": [[s.text, s.para_end] for s in sentences],
               "timing": [LEAD_IN, TAIL, GAP, PARA_GAP, SILENCE_DB, SAMPLE_RATE]}
     cached = read_json(track_path)

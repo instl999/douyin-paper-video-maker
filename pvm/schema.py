@@ -55,6 +55,16 @@ class Paper(BaseModel):
     openalex_id: str | None = None
     origin: str | None = None
 
+    @field_validator("pages", mode="before")
+    @classmethod
+    def _pages(cls, v):
+        # Article-number journals report first page = last page ("7730–7730"); cite the number once.
+        if isinstance(v, str):
+            parts = [p.strip() for p in re.split(r"[-–—]", v)]
+            if len(parts) == 2 and parts[0] == parts[1]:
+                return parts[0] or None
+        return v
+
     @property
     def doi_url(self) -> str | None:
         return f"https://doi.org/{self.doi}" if self.doi else None

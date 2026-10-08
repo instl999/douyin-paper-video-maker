@@ -49,6 +49,15 @@ class LedgerTest(TempHome):
         self.assertEqual((st.used_today, st.used_cycle), (297, 297))
         self.assertEqual(st.mode, "normal")
 
+    def test_spend_per_project(self):
+        quota.record(150, kind="image", project="demo")
+        quota.record(45, kind="voice", project="demo")
+        quota.record(3, kind="text", project="demo")
+        quota.record(3, kind="text", project="demo")
+        quota.record(150, kind="mascot")  # the shared mascot library belongs to no project
+        self.assertEqual(quota.project_spend("demo"), {"total": 201, "by_kind": {"image": 150, "voice": 45, "text": 6},
+                                                       "calls": {"image": 1, "voice": 1, "text": 2}})
+
     def test_status_paces_over_the_plan_month(self):
         settings = config.get_settings()
         with mock.patch.object(quota, "get_settings", return_value=replace(settings, plan_start="2026-10-07",

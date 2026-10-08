@@ -49,9 +49,10 @@ class PlanTextSpendTest(TempHome):
 
         llm = LLM("https://ark.cn-beijing.volces.com/api/plan/v3", "k", "deepseek-v4.1-flash",
                   transport=httpx.MockTransport(handler))
-        llm.json("s", "u")
+        llm.json("s", "u", project="demo")
         # (12,000 + 3,000) tokens x 2.5 AFP per 10,000 = 3.75, rounded up per call
-        self.assertEqual([(e["kind"], e["afp"]) for e in quota.entries()], [("text", 4), ("text", 4)])
+        self.assertEqual([(e["kind"], e["afp"], e["project"]) for e in quota.entries()],
+                         [("text", 4, "demo"), ("text", 4, "demo")])
 
     def test_other_endpoints_cost_no_afp(self):
         transport = httpx.MockTransport(lambda r: httpx.Response(200, json=completion(json.dumps({"ok": True}))))

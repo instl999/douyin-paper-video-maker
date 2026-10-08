@@ -235,7 +235,7 @@ def _store(key: str, clip: Clip, params: dict, text: str) -> None:
                                               "words": [asdict(w) for w in clip.words]})
 
 
-def synthesize(engine, texts: list[str]) -> tuple[list[Clip], int]:
+def synthesize(engine, texts: list[str], project: str | None = None) -> tuple[list[Clip], int]:
     """Clips for every text, from the cache where possible. Returns (clips, number newly synthesized)."""
     params = engine.params()
     keys = [cache_key(params, t) for t in texts]
@@ -248,24 +248,25 @@ def synthesize(engine, texts: list[str]) -> tuple[list[Clip], int]:
             clips[i] = clip
         if engine.name == "ark":  # the plan bills voice by characters; cached sentences cost nothing
             chars = sum(len(texts[i]) for i in todo)
-            quota.record(math.ceil(chars * ARK_AFP_PER_10K_CHARS / 10_000), kind="voice", model=engine.speaker,
+            quota.record(math.ceil(chars * ARK_AFP_PER_10K_CHARS / 10_000), kind="voice", project=project,
+                         model=engine.speaker,
                          note=f"{len(todo)} sentence(s), {chars} characters")
     return [c for c in clips if c is not None], len(todo)
 
 
 def synthesize_with_fallback(settings: Settings, opts: VoiceOptions | None, texts: list[str],
-                             override: str | None = None):
+                             override: str | None = None, project: str | None = None):
     """Synthesize with the configured engine. In auto mode, if Ark fails outright, redo everything with
     edge-tts: one video must never mix two voices."""
     engine = make_engine(settings, opts, override)
     auto = override is None and (opts is None or opts.engine in (None, "auto")) and settings.tts_engine == "auto"
     try:
-        clips, n = synthesize(engine, texts)
+        clips, n = synthesize(engine, texts, project)
         return engine, clips, n
     except PvmError as e:
         if not (auto and engine.name == "ark"):
             raise
         warn(f"Ark TTS failed ({e}); using edge-tts for this video instead")
         engine = make_engine(settings, opts, "edge")
-        clips, n = synthesize(engine, texts)
+        clips, n = synthesize(engine, texts, project)
         return engine, clips, n

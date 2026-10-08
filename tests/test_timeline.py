@@ -72,9 +72,10 @@ class ArkVoiceSpendTest(TempHome):
     def test_new_sentences_are_billed_by_characters_and_cached_ones_are_free(self):
         engine = ArkEngine("https://tts.example", "k", "zh_male_jieshuoxiaoming_uranus_bigtts", 10)
         with mock.patch.object(engine, "synthesize_many", side_effect=lambda texts: [Clip(b"mp3") for _ in texts]):
-            synthesize(engine, TEXTS[:2])  # 21 + 18 characters
-            synthesize(engine, TEXTS[:3])  # only the third (22 characters) is new
-        self.assertEqual([(e["kind"], e["afp"]) for e in quota.entries()], [("voice", 6), ("voice", 3)])  # 1,350 / 10k
+            synthesize(engine, TEXTS[:2], "demo")  # 21 + 18 characters
+            synthesize(engine, TEXTS[:3], "demo")  # only the third (22 characters) is new
+        self.assertEqual([(e["kind"], e["afp"], e["project"]) for e in quota.entries()],
+                         [("voice", 6, "demo"), ("voice", 3, "demo")])  # 1,350 AFP per 10,000 characters
 
 
 class TimelineTest(unittest.TestCase):

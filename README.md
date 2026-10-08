@@ -66,7 +66,9 @@ Set `PVM_PLAN_START` to the plan's purchase date: the plan's month, and its quot
 `pvm quota` shows the cycle and today's allowance.
 
 A worked example lives in `projects/demo-social-capital/`: script, reviewed storyboard, voice, a poster with
-the mascot, and final 3:4 and 9:16 renders that pass QA.
+the mascot, and final 3:4 and 9:16 renders that pass QA. `projects/nature-120min/` is a full 60-second video on
+White et al. (2019), made end to end with these commands. It covers every scene type and cost 354 AFP, which the
+manifest itemizes.
 
 ## Tests
 
