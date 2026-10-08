@@ -108,7 +108,7 @@ def validate(p: Project, data: dict) -> tuple[list[str], list[str]]:
 def plan(p: Project, llm: LLM, *, force: bool = False, temperature: float = 0.3) -> dict:
     """Draft storyboard.json (or storyboard.draft.json when one exists and force is off)."""
     prompt = plan_prompt(p)
-    reply = llm.json(PLAN_SYSTEM, prompt, temperature=temperature, max_tokens=PLAN_TOKENS)
+    reply = llm.json(PLAN_SYSTEM, prompt, temperature=temperature, max_tokens=PLAN_TOKENS, project=p.slug)
     draft = reply.data
     errors, warnings = validate(p, draft)
     rounds = 1
@@ -116,7 +116,7 @@ def plan(p: Project, llm: LLM, *, force: bool = False, temperature: float = 0.3)
         repair = (prompt + "\n\nYOUR PREVIOUS STORYBOARD:\n" + json.dumps(draft, ensure_ascii=False)
                   + "\n\nA program found these problems:\n" + "\n".join(f"- {e}" for e in errors)
                   + "\n\nReturn the corrected storyboard as one JSON object. Keep everything that was right.")
-        reply = llm.json(PLAN_SYSTEM, repair, temperature=temperature, max_tokens=PLAN_TOKENS)
+        reply = llm.json(PLAN_SYSTEM, repair, temperature=temperature, max_tokens=PLAN_TOKENS, project=p.slug)
         draft = reply.data
         errors, warnings = validate(p, draft)
         rounds = 2
@@ -156,7 +156,7 @@ def review(p: Project, llm: LLM) -> dict:
     sources = "\n".join(f"[{sid}] {paper.citation()}\n    abstract: {paper.abstract or '(none)'}"
                         for sid, paper in p.sources().items())
     user = json.dumps({"claims": items, "hook": hook}, ensure_ascii=False, indent=1) + "\n\nSOURCES:\n" + sources
-    reply = llm.json(REVIEW_SYSTEM, user, temperature=0.0, max_tokens=PLAN_TOKENS)
+    reply = llm.json(REVIEW_SYSTEM, user, temperature=0.0, max_tokens=PLAN_TOKENS, project=p.slug)
     result = {"at": now_iso(), "prompt_version": REVIEW_VERSION, "model": reply.model,
               "input_hash": stable_hash([REVIEW_SYSTEM, user])[:16], "claims": [], "hook": reply.data.get("hook") or {}}
     by_index = {int(c.get("index", 0)): c for c in reply.data.get("claims", []) if isinstance(c, dict)}

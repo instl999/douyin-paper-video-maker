@@ -52,6 +52,18 @@ def entries() -> list[dict]:
     return out
 
 
+def project_spend(slug: str) -> dict:
+    """AFP a project has used, from the ledger: total, and amount and calls per kind (image, voice, text)."""
+    by_kind: dict[str, int] = {}
+    calls: dict[str, int] = {}
+    for e in entries():
+        if e.get("project") == slug:
+            kind = e.get("kind") or "other"
+            by_kind[kind] = by_kind.get(kind, 0) + int(e.get("afp") or 0)
+            calls[kind] = calls.get(kind, 0) + 1
+    return {"total": sum(by_kind.values()), "by_kind": by_kind, "calls": calls}
+
+
 def _day(entry: dict) -> date | None:
     try:
         return datetime.fromisoformat(entry["at"]).date()

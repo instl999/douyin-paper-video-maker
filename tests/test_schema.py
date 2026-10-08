@@ -3,7 +3,7 @@ import unittest
 from pvm.schema import check_storyboard, parse_storyboard
 from pvm.script import sentences_hash, split_sentences
 from pvm.util import PvmError
-from tests.helpers import SCRIPT, board
+from tests.helpers import SCRIPT, board, fixture_paper
 
 SENTENCES = [s.text for s in split_sentences(SCRIPT)]
 SOURCES = {"src1"}
@@ -89,6 +89,15 @@ class StoryboardCheckTest(unittest.TestCase):
         with self.assertRaises(PvmError) as ctx:
             parse_storyboard(data)
         self.assertIn("claims.0.type", str(ctx.exception))
+
+
+class PaperPagesTest(unittest.TestCase):
+    def test_article_numbers_are_cited_once(self):
+        # OpenAlex gives Scientific Reports articles first_page = last_page = the article number
+        self.assertEqual(fixture_paper(pages="7730–7730").pages, "7730")
+        self.assertEqual(fixture_paper(pages="e123-e123").pages, "e123")
+        self.assertEqual(fixture_paper(pages="45–67").pages, "45–67")
+        self.assertIn("9(1), 7730.", fixture_paper(volume="9", issue="1", pages="7730–7730").citation())
 
 
 if __name__ == "__main__":

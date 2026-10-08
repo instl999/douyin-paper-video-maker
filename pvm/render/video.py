@@ -16,10 +16,11 @@ from pathlib import Path
 
 from PIL import Image
 
+from .. import quota
 from ..config import get_settings
 from ..evidence import describe_license
 from ..project import Project
-from ..schema import Storyboard
+from ..schema import GENERATED_TYPES, Storyboard
 from ..script import sentences_hash
 from ..timeline import Timeline
 from ..util import PvmError, ensure_dir, ffmpeg_exe, fmt_seconds, log, now_iso, read_json, run, stable_hash, write_json, write_text
@@ -244,6 +245,24 @@ def write_description(p: Project, sb: Storyboard) -> Path:
     return path
 
 
+def visuals_record(p: Project, sb: Storyboard) -> list[dict]:
+    """Each generated image: model, attempts (and how many came from the cache), OCR outcome and AFP."""
+    out = []
+    for sc in sb.scenes:
+        if sc.type not in GENERATED_TYPES:
+            continue
+        meta = read_json(p.visuals_dir / f"{sc.id}.json") or {}
+        tried = meta.get("attempts", [])
+        if meta.get("accepted_by") == "operator":
+            ocr = "operator"
+        else:
+            ocr = ("pass" if tried[-1].get("ok") else "review") if tried else None
+        out.append({"scene": sc.id, "file": f"visuals/{sc.id}.png", "provider": meta.get("provider"),
+                    "model": meta.get("model"), "prompt_hash": meta.get("fingerprint"), "attempts": len(tried),
+                    "cached": sum(a.get("source") == "cache" for a in tried), "ocr": ocr, "afp": meta.get("afp", 0)})
+    return out
+
+
 def write_manifest(p: Project, sb: Storyboard, tl: Timeline, renders: list[dict], kind: str) -> Path:
     report = p.check()
     per_type: dict[str, int] = {}
@@ -269,6 +288,8 @@ def write_manifest(p: Project, sb: Storyboard, tl: Timeline, renders: list[dict]
                    "excerpts": len(report.evidence)},
         "renders": renders,
         "labels": {"visible": renders[0]["ai_label"] if renders else None, "metadata": "AIGC"},
+        "visuals": visuals_record(p, sb),
+        "afp": quota.project_spend(p.slug),  # actual spend from the ledger: images, voice and text calls
     }
     path = p.output_dir / ("manifest.json" if kind == "final" else f"{kind}.manifest.json")
     write_json(path, manifest)

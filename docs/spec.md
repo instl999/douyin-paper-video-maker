@@ -618,7 +618,9 @@ Monthly capacity at Standard:
 - Prices come from the Agent Plan's AFP rules (updated September 29, 2026): Seedream 5.0 pro 150 AFP per image up to 2.61 MP and 300 above, the first reference image free and 10 AFP for each further one; voice 1,350 AFP per 10,000 characters. They live in `pvm/images.py` (`IMAGE_MODELS`) and `pvm/tts.py`. `PVM_AFP_PER_IMAGE` overrides the image price.
 - The plan's console shows actual usage with a delay of half a day to a day. The local ledger is the operational figure.
 
-The per-video manifest records estimated AFP, actual AFP, image calls, retries, cache hits and the failed stage. The operator chooses between quota-saving and quality modes.
+The per-video manifest records the AFP the video actually used, by kind (images, voice, text calls), from the ledger, and for each image its model, attempts, cache hits and OCR outcome. `pvm images --dry-run` gives the estimate beforehand. The operator chooses between quota-saving and quality modes.
+
+Measured on the first real 60-second video (October 7, 2026: White et al. 2019, a paper opening, one poster, a text card and a summary): 354 AFP in total. That was 300 for two images, each accepted on the first attempt, 45 for 333 characters of voice, and 9 for a storyboard draft in two rounds plus one review.
 
 ---
 
@@ -779,7 +781,8 @@ The example below uses a 12-sentence script about Kruger & Dunning (1999). Sente
   "sources": [{"id": "src1", "doi": "10.1037/0022-3514.77.6.1121", "license": null, "display": "title_crop"}],
   "scenes": [{"id": "open", "type": "paper", "start": 0.0, "end": 14.2}],
   "visuals": [{"scene": "p1", "file": "visuals/p1.png", "provider": "ark", "model": "doubao-seedream-5-0-pro",
-               "prompt_hash": "…", "attempts": 2, "ocr": "pass", "afp": 300}],
+               "prompt_hash": "…", "attempts": 2, "cached": 0, "ocr": "pass", "afp": 300}],
+  "afp": {"total": 354, "by_kind": {"text": 9, "voice": 45, "image": 300}, "calls": {"text": 3, "voice": 1, "image": 2}},
   "claims": {"sentences": 12, "source_fact": 5, "verified": 5},
   "labels": {"visible": "含AI生成内容", "metadata": true},
   "qa": {"loudness_lufs": -12.1, "true_peak_dbtp": -1.2, "max_frozen_s": 3.1, "black_frames": 0}
@@ -905,7 +908,7 @@ Automatic paper discovery, topic ideation, large batches and automatic publishin
 
 ### Operations
 
-- Every manifest records estimated and actual AFP, image calls, retries, cache hits, the failed stage (if any) and accepted/rejected assets.
+- Every manifest records actual AFP by kind, and for each image its model, attempts, cache hits and OCR outcome.
 
 ---
 

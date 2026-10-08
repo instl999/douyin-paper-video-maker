@@ -75,7 +75,8 @@ class SceneRenderer:
         """Poster title with the ochre underline bar (drawn by code). Returns the y below the bar."""
         f, _ = fit_lines([text], "black", self.W - 2 * self.s(80), self.s(size), self.s(40))
         sprite = text_sprite([text], f, INK + (255,))
-        base.paste(sprite, ((self.W - sprite.width) // 2, cy - sprite.height // 2), sprite)
+        self.title_top = cy - sprite.height // 2
+        base.paste(sprite, ((self.W - sprite.width) // 2, self.title_top), sprite)
         bar_w, bar_h = int(sprite.width * 0.92), self.s(10)
         y = cy + sprite.height // 2 + self.s(16)
         ImageDraw.Draw(base).rounded_rectangle(((self.W - bar_w) // 2, y, (self.W + bar_w) // 2, y + bar_h),
@@ -408,6 +409,10 @@ class PosterRenderer(SceneRenderer):
                 img.paste(IVORY, (x, y), sh["mask"].point(lambda v: int(v * dim)))
         z = 1 + 0.03 * ease(self.progress(t))
         cy = self.H / 2 + (target_y - self.H / 2) * 0.35 * focus_on
+        # Drifting toward a lower panel would push the title up under the source chip and the AI label, so the
+        # view never moves above the title's resting line: zooming about this cap keeps the title where it is.
+        top = getattr(self, "title_top", 0)
+        cy = min(cy, top + (self.H / 2 - top) / z)
         return zoom(img, z, self.W / 2, cy)
 
 

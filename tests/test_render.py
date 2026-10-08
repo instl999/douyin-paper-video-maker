@@ -11,7 +11,7 @@ from pvm.render.assets import zoom
 from pvm.render.paper import draw_citation, torn_bottom
 from pvm.render.scenes import split_bands
 from pvm.render.style import layout
-from pvm.render.video import Composer, render, save_cover
+from pvm.render.video import Composer, render, save_cover, write_manifest
 from pvm.schema import parse_storyboard
 from pvm.timeline import build_timeline
 from pvm.util import PvmError, write_json, write_wav
@@ -124,6 +124,21 @@ class RenderSmokeTest(TempHome):
         self.assertGreater(np.abs(with_pose[lower] - without[lower]).mean(), 5)
         self.assertEqual(comp.ctx.warnings, [])
 
+    def test_poster_title_stays_clear_of_the_overlays_when_a_lower_panel_has_focus(self):
+        p, _, _ = self.make()
+        sections = [{"heading": h, "visual": "mascot", "labels": [], "at": n} for n, h in ((1, "一"), (2, "二"), (3, "三"))]
+        board = parse_storyboard(dict(STORYBOARD, scenes=[{"id": "p1", "type": "poster", "sentences": [1, 3],
+                                                           "title": "盲区", "sections": sections}]))
+        tl = build_timeline(board, synthetic_voice(p))
+        poster = Composer(p, board, tl, layout("3x4", animatic=True), animatic=True, strict=False).renderer(0)
+
+        def title_top(t):  # first row of dark title ink in the header band
+            ink = np.asarray(poster.frame(t).convert("L"))[: poster.H // 6, poster.W // 4: 3 * poster.W // 4] < 90
+            return int(np.argmax(ink.any(axis=1)))
+
+        start, end = tl.scenes[0].start + 0.05, tl.scenes[0].end - 0.05
+        self.assertLessEqual(abs(title_top(end) - title_top(start)), 1)  # the third panel's focus used to lift it
+
     def test_every_scene_type_draws_a_full_frame(self):
         p, sb, tl = self.make()
         comp = Composer(p, sb, tl, layout("9x16", animatic=True), animatic=True, strict=False)
@@ -150,6 +165,10 @@ class RenderSmokeTest(TempHome):
         self.assertTrue((p.dir / summary["file"]).exists())
         result = run_qa(p, "3x4", "draft")
         self.assertTrue(result["passed"], [c for c in result["checks"] if not c["ok"]])
+        manifest = json.loads(write_manifest(p, sb, tl, [summary], "draft").read_text(encoding="utf-8"))
+        self.assertEqual([v["scene"] for v in manifest["visuals"]], ["p1", "end"])  # the generated scenes
+        self.assertEqual(manifest["visuals"][0]["attempts"], 0)  # placeholders: nothing generated yet
+        self.assertEqual(manifest["afp"]["total"], 0)
 
     def test_cover_carries_the_implicit_aigc_label(self):
         p, sb, tl = self.make()
