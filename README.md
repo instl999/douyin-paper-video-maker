@@ -1,5 +1,15 @@
 # pvm: evidence-led paper explainer videos
 
+<!-- repository-catalog:start -->
+**Category: Video creation and editing** · [Repositories in this category](https://github.com/instl999?tab=repositories&q=topic%3Avideo-creation)
+
+Turns research papers and narration scripts into paper-collage explainer videos with verbatim evidence checks for research claims.
+
+Related projects: [douyin-carousel-generator](https://github.com/instl999/douyin-carousel-generator) · [douyin-daodaoshou-tool](https://github.com/instl999/douyin-daodaoshou-tool) · [douyin-spongebob-economics-tool](https://github.com/instl999/douyin-spongebob-economics-tool)
+
+[简体中文](README.zh-CN.md)
+<!-- repository-catalog:end -->
+
 `pvm` turns a research paper and a narration script into a Douyin-style explainer video. The video opens on the
 paper, then walks through paper-cut collage posters. Every research claim in it is traceable to a verbatim quote
 from the source.
