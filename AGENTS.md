@@ -64,10 +64,10 @@ writing a storyboard.
   "everyone", and "a study found" is not "science proves".
 - A sentence that introduces the paper (journal, year, authors, institution) is a `source_fact`. Quote the title, or
   the affiliation line from the PDF.
-- When the evidence is thin, write the sentence as an interpretation ("一种可能的解释是…", "可以这样理解…") and label
+- When the evidence is thin, write the sentence as an interpretation ("one possible explanation is...", "it can be understood as...") and label
   it that way.
 - The hook is 1–3 lines of 2–7 characters. Before you keep a hook, ask: would a viewer seeing it over the paper
-  believe the paper says it? "越不懂越自信" fails for Kruger & Dunning (1999); "越不懂，越高估自己" passes.
+  believe the paper says it? "the less you know, the more confident you are" fails for Kruger & Dunning (1999); "the less you know, the more you overestimate yourself" passes.
 - A warning about research wording ("sentence N uses research wording…") means a sentence sounds like a finding but
   is not labeled `source_fact`. Relabel it with evidence, or rephrase it.
 
