@@ -7,7 +7,6 @@ Turns research papers and narration scripts into paper-collage explainer videos 
 
 Related projects: [douyin-carousel-generator](https://github.com/instl999/douyin-carousel-generator) · [douyin-daodaoshou-tool](https://github.com/instl999/douyin-daodaoshou-tool) · [douyin-spongebob-economics-tool](https://github.com/instl999/douyin-spongebob-economics-tool)
 
-[简体中文](README.zh-CN.md)
 <!-- repository-catalog:end -->
 
 `pvm` turns a research paper and a narration script into a Douyin-style explainer video. The video opens on the
