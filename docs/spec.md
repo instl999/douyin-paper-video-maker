@@ -77,11 +77,11 @@ All numbers in this section come from the seven benchmark files, measured with f
 |---|---|---:|---|---|---|---|
 | 1 | `owvZ1VCk….mp4` | 127.2 s | 1080×1440 | Chetty et al., *Nature* 2022 — "Social capital I" | CC-BY | Paper wall + summary card |
 | 2 | `oIPT4IAM….mp4` | 135.6 s | 1920×2560 | Scholer, Hubley & Fujita, *Nature Reviews Psychology* 2024 | closed | Hybrid |
-| 3 | `video_为什么一定要远离蠢人…` | 115.1 s | 1080×1440 | Kruger & Dunning, *JPSP* 1999 | closed | Hybrid |
-| 4 | `video_为什么权衡利弊…` | 157.6 s | 1080×1440 | Mann, Burnett, Radford & Ford, *J. Behavioral Decision Making* 1997 | closed | Hybrid |
+| 3 | `video_why-you-must-stay-away-from-fools...` | 115.1 s | 1080×1440 | Kruger & Dunning, *JPSP* 1999 | closed | Hybrid |
+| 4 | `video_why-weigh-pros-and-cons...` | 157.6 s | 1080×1440 | Mann, Burnett, Radford & Ford, *J. Behavioral Decision Making* 1997 | closed | Hybrid |
 | 5 | `oI8mYBaq….mp4` | 132.0 s | 1080×1440 | Sheldon & Elliot, *JPSP* 1999 | closed | Paper wall + summary card |
 | 6 | `o8iBPlcf….mp4` | 143.6 s | 1080×1440 | Sivanathan & Pettit, *J. Experimental Social Psychology* 2010 | closed | Hybrid |
-| 7 | `video_成长最快的方式…` | 114.1 s | 1080×1440 | Aryee & Chu, *Human Performance* 2012 | closed | Hybrid |
+| 7 | `video_the-fastest-way-to-grow...` | 114.1 s | 1080×1440 | Aryee & Chu, *Human Performance* 2012 | closed | Hybrid |
 
 All seven videos are 3:4 at 30 fps. The mean duration is 132 s (range 114–158 s).
 
@@ -108,23 +108,23 @@ What this means:
 
 ### 2.3 Visual language
 
-- **Opening:** a full paper page with a very large yellow hook in a heavy face with a thick black outline. The hook has two lines of 2–7 characters each ("及时/止损", "人生就是比/谁先找到自己").
-- **Subtitles:** white heavy sans with a black outline. They usually show one line of about 9–12 characters, with the baseline at about 93% of frame height. When they wrap, the second line is sometimes orphaned ("财富上限往往不是由努力/决定").
+- **Opening:** a full paper page with a very large yellow hook in a heavy face with a thick black outline. The hook has two lines of 2–7 characters each ("act fast / stop the loss", "life is about who finds themselves first").
+- **Subtitles:** white heavy sans with a black outline. They usually show one line of about 9–12 characters, with the baseline at about 93% of frame height. When they wrap, the second line is sometimes orphaned ("the wealth ceiling is often decided by effort / decisions").
 - **Posters:** paper-cut collage on ivory paper.
   - A title of at most 8 characters sits over an ochre underline bar.
   - Three numbered panels follow, with navy number badges and headings of mostly 4–7 characters. The middle panel is framed.
   - The mascot appears two or three times per panel.
   - Short labels sit on torn paper tags, signposts and arrow chips.
-- **Summary card (samples 1 and 5):** a "<creator>的总结" title, a citation block (paper title, DOI, venue and year), then three panels that include numbers such as sample sizes and percentages.
+- **Summary card (samples 1 and 5):** a "<creator>'s summary" title, a citation block (paper title, DOI, venue and year), then three panels that include numbers such as sample sizes and percentages.
 - **Model-drawn text:** the Chinese labels inside the posters are clean even at 1920×2560, so current image models draw short Chinese labels reliably. The summary cards also carry facts (a DOI, sample sizes) inside the illustration, which is exactly the failure mode §8.2 rules out.
-- **Mascot:** the recurring character is the benchmark creator's persona (西门). It must not be echoed.
+- **Mascot:** the recurring character is the benchmark creator's persona (Ximen). It must not be echoed.
 
 ### 2.4 What to improve
 
 | Benchmark pattern | Risk | Improvement |
 |---|---|---|
 | Posters hold still for 16–40 s | Visual fatigue, weaker retention | Panel-by-panel focus and a slow push-in; nothing above the subtitles frozen for more than 5 s |
-| The paper is shown as decoration, under hooks it does not support ("远离蠢人" over Kruger & Dunning) | Misrepresenting research | Claim types, verified excerpts, the hook treated as a claim, a source chip during source-fact sentences |
+| The paper is shown as decoration, under hooks it does not support ("stay away from fools" over Kruger & Dunning) | Misrepresenting research | Claim types, verified excerpts, the hook treated as a claim, a source chip during source-fact sentences |
 | Facts drawn inside AI images | Silent digit errors on the "evidence" card | Facts drawn by code only |
 | Closed papers shown page by page for about two minutes (sample 5) | Rights | License-aware display (§6.6) |
 | Hot, clipping audio | Distortion on phone speakers | −12 LUFS integrated, −1 dBTP ceiling |
@@ -349,7 +349,7 @@ An evidence item is `{"source": "src1", "excerpt": "<verbatim text>", "page": 3}
 
 Sentences that introduce the source ("published in JPSP by two Cornell psychologists") are `source_fact` too. Their excerpt is the title or the affiliation line.
 
-When the evidence is thin, write the sentence as an interpretation: "一种可能的解释是…", "可以这样理解…". Stricter rules apply to psychology, health and finance: correlational studies never become causal language, a sample never becomes "everyone", and "a study found" never becomes "science proves".
+When the evidence is thin, write the sentence as an interpretation: "one possible explanation is...", "it can be understood as...". Stricter rules apply to psychology, health and finance: correlational studies never become causal language, a sample never becomes "everyone", and "a study found" never becomes "science proves".
 
 ### 6.4 Verification ladder
 
@@ -357,7 +357,7 @@ When the evidence is thin, write the sentence as an interpretation: "一种可�
    - Not found in text that includes the full paper → **error**. Excerpts must be verbatim.
    - Only the title and abstract are available → **warning** in drafts, **error** in the final render (`--strict`). Add the PDF or a text file.
 2. **Excerpt length.** Fewer than 6 words or characters is an error. More than 400 characters is a warning: quote the specific sentence.
-3. **Research-language lint.** A sentence with research wording (研究, 实验, 数据, 样本, %, …) that is not labeled `source_fact` → warning.
+3. **Research-language lint.** A sentence with research wording (research, experiment, data, sample, %, ...) that is not labeled `source_fact` → warning.
 4. **LLM claim review (M5).** Does the excerpt support the sentence without overreach in causation, population, magnitude or certainty?
 5. **Operator sign-off** at checkpoints 1 and 2.
 
@@ -369,7 +369,7 @@ The hook sits on top of the paper, so viewers read it as the paper's finding. It
 - A `source_fact` hook needs evidence, verified like any other.
 - An `interpretation` or `advice` hook needs a `basis`: one sentence explaining how it follows from the source. The claim review checks that basis.
 
-Example: "越不懂越自信" is a popular misreading of Kruger & Dunning (1999). The low scorers overestimated themselves, but they still rated themselves below the high scorers. "越不懂，越高估自己" is supported by the excerpt "grossly overestimated their test performance and ability".
+Example: "the less you know, the more confident you are" is a popular misreading of Kruger & Dunning (1999). The low scorers overestimated themselves, but they still rated themselves below the high scorers. "the less you know, the more you overestimate yourself" is supported by the excerpt "grossly overestimated their test performance and ability".
 
 ### 6.6 Showing paper pages
 
@@ -639,7 +639,7 @@ Measured on the first real 60-second video (October 7, 2026: White et al. 2019, 
 ### 13.2 AI-content labeling (China)
 
 - The *Measures for Labeling AI-Generated Synthetic Content* (CAC and others, in force since September 1, 2025) and the mandatory national standard GB 45438-2025 require explicit and implicit labels on AI-generated content. This project's images and voice are AI-generated.
-- **Explicit label:** a visible label in the video (default "含AI生成内容", configurable), plus Douyin's AI-content declaration at upload.
+- **Explicit label:** a visible label in the video (default "Contains AI-generated content", configurable), plus Douyin's AI-content declaration at upload.
 - **Implicit label:** the pipeline writes an AIGC metadata record into the MP4. Pillow compositing and FFmpeg re-encoding drop any metadata label carried by the provider's images, so the pipeline must write its own.
   - **Video:** the MP4 metadata field `AIGC` holds `{"Label": "1", "ContentProducer": …, "ProduceID": …, "ReservedCode1": "", "ContentPropagator": "", "PropagateID": "", "ReservedCode2": ""}`. These are the GB 45438-2025 field names, checked against published implementations in September 2026. `Label` "1" marks the content as AI-generated.
   - **Cover image:** the published cover PNG carries the same record as XMP in the TC260 namespace (`http://www.tc260.org.cn/ns/AIGC/1.0/`).
@@ -655,7 +655,7 @@ See §6.6. The fact that a PDF can be downloaded does not mean its pages can be 
 
 - Render only with openly licensed fonts: Noto Sans CJK SC and Source Serif 4, both under the SIL Open Font License. `pvm fonts` downloads them.
 - If they are missing, rendering fails rather than silently falling back to system fonts. Setting `PVM_ALLOW_SYSTEM_FONTS=1` overrides this, at the operator's own risk.
-- Microsoft YaHei and SimHei ship with Windows, but their commercial rights sit with their foundries; YaHei was designed by Founder (方正). Do not use them in published videos without a license.
+- Microsoft YaHei and SimHei ship with Windows, but their commercial rights sit with their foundries; YaHei was designed by Founder (FangZheng). Do not use them in published videos without a license.
 
 ### 13.5 Character and IP
 
@@ -703,8 +703,8 @@ The example below uses a 12-sentence script about Kruger & Dunning (1999). Sente
 ```json
 {
   "version": 2,
-  "title": "为什么越不懂的人越高估自己",
-  "hook": ["越不懂", "越高估自己"],
+  "title": "Why people who understand less overestimate themselves more",
+  "hook": ["the less you know", "the more you overestimate yourself"],
   "hook_until": 3,
   "hook_claim": {
     "type": "source_fact",
@@ -726,27 +726,27 @@ The example below uses a 12-sentence script about Kruger & Dunning (1999). Sente
   "scenes": [
     {"id": "open", "type": "paper", "sentences": [1, 3], "paper": "src1", "source": "auto",
      "highlights": [{"text": "grossly overestimated their test performance and ability", "at": 3}]},
-    {"id": "p1", "type": "poster", "sentences": [4, 8], "title": "错而不自知",
+    {"id": "p1", "type": "poster", "sentences": [4, 8], "title": "Wrong without knowing it",
      "sections": [
-       {"heading": "不懂不自知", "at": 4, "labels": ["不会做", "看不出"],
+       {"heading": "Unaware of not knowing", "at": 4, "labels": ["can't do it", "can't see it"],
         "visual": "mascot confidently holds a wrong answer sheet while a tiny question mark floats behind him"},
-       {"heading": "缺的是尺子", "at": 6, "labels": ["尺子"],
+       {"heading": "Missing the ruler", "at": 6, "labels": ["ruler"],
         "visual": "mascot measures a tall stack of books with a ruler that is missing its markings"},
-       {"heading": "越争越累", "at": 7, "labels": ["争论", "疲惫"],
+       {"heading": "The more you argue, the more tired", "at": 7, "labels": ["argument", "exhaustion"],
         "visual": "two mascots argue across a table, one slumped and tired, papers scattered"}
      ]},
-    {"id": "p2", "type": "poster", "sentences": [9, 10], "title": "先问怎么知道",
+    {"id": "p2", "type": "poster", "sentences": [9, 10], "title": "First ask how you know",
      "sections": [
-       {"heading": "特别确定时", "at": 9, "labels": ["我确定"],
+       {"heading": "When you are very sure", "at": 9, "labels": ["I'm sure"],
         "visual": "mascot pauses mid-stride and looks at a magnifying glass in his hand"},
-       {"heading": "找人挑毛病", "at": 10, "labels": ["请指正"],
+       {"heading": "Have someone find faults", "at": 10, "labels": ["please correct me"],
         "visual": "mascot hands his notebook to a friendly colleague who points at a page"}
      ]},
     {"id": "end", "type": "summary", "sentences": [11, 12],
      "sections": [
-       {"heading": "研究发现", "labels": [], "visual": "mascot beside a test paper with a big gap between two bars"},
-       {"heading": "原因", "labels": ["尺子"], "visual": "mascot holding a blank ruler"},
-       {"heading": "对策", "labels": ["请指正"], "visual": "mascot shaking hands with a colleague"}
+       {"heading": "What the study found", "labels": [], "visual": "mascot beside a test paper with a big gap between two bars"},
+       {"heading": "Cause", "labels": ["ruler"], "visual": "mascot holding a blank ruler"},
+       {"heading": "What to do", "labels": ["please correct me"], "visual": "mascot shaking hands with a colleague"}
      ]}
   ],
   "voice": {"engine": "edge"}
@@ -784,7 +784,7 @@ The example below uses a 12-sentence script about Kruger & Dunning (1999). Sente
                "prompt_hash": "…", "attempts": 2, "cached": 0, "ocr": "pass", "afp": 300}],
   "afp": {"total": 354, "by_kind": {"text": 9, "voice": 45, "image": 300}, "calls": {"text": 3, "voice": 1, "image": 2}},
   "claims": {"sentences": 12, "source_fact": 5, "verified": 5},
-  "labels": {"visible": "含AI生成内容", "metadata": true},
+  "labels": {"visible": "Contains AI-generated content", "metadata": true},
   "qa": {"loudness_lufs": -12.1, "true_peak_dbtp": -1.2, "max_frozen_s": 3.1, "black_frames": 0}
 }
 ```
